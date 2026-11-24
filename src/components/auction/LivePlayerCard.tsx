@@ -173,9 +173,9 @@ export const LivePlayerCard: React.FC<LivePlayerCardProps> = ({
 
           <div className="text-center sm:text-right">
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-              Leading Team
+              Leading Status
             </span>
-            {highestBidder ? (
+            {highestBidder && highestBidder.teamName && highestBidder.teamName !== 'Bid Raised' ? (
               <div className="flex items-center gap-2 mt-1">
                 {highestBidder.teamLogo && (
                   <img
@@ -189,8 +189,8 @@ export const LivePlayerCard: React.FC<LivePlayerCardProps> = ({
                 </span>
               </div>
             ) : (
-              <span className="text-sm font-semibold text-slate-400 mt-1 block">
-                No Bids Yet (At Base Price)
+              <span className="text-sm font-semibold text-slate-600 mt-1 block">
+                {currentBid > (player.basePrice || 0) ? 'Bidding In Progress' : 'No Bids Yet (At Base Price)'}
               </span>
             )}
           </div>

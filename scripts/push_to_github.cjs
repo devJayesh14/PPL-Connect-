@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: fix release retention SQL quoting, confirm retention route token loading, and email fast fallback with WhatsApp share',
+      message: 'feat: remove team requirement during bid increments, only select winning team when player is sold',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

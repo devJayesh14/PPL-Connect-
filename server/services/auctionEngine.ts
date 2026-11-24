@@ -316,7 +316,7 @@ class AuctionEngine {
   // 2. Place Bid (Server-validated & Race-condition safe)
   public placeBid(
     auctionId: string,
-    teamId: string,
+    teamId?: string,
     captainId?: string,
     customBidAmount?: number
   ): { success: boolean; message?: string } {
@@ -326,61 +326,66 @@ class AuctionEngine {
       return { success: false, message: 'Bidding is not currently active for any player.' };
     }
 
-    // Prevent team bidding against itself
-    if (room.highestBidder && room.highestBidder.teamId === teamId) {
-      return { success: false, message: 'Your team already holds the highest bid.' };
-    }
-
     const proposedBid = customBidAmount || room.nextBidAmount;
 
-    // Verify proposedBid is at least current requirement
-    if (room.highestBidder && proposedBid <= room.currentBid) {
+    // Verify proposedBid is higher than current bid
+    if (proposedBid <= room.currentBid && room.currentBid > 0) {
       return { success: false, message: `Bid must be higher than current bid of ₹${room.currentBid.toLocaleString('en-IN')}` };
     }
 
-    // SMART PURSE & SQUAD VALIDATION
-    const validation = validateTeamBid(auctionId, teamId, room.currentPlayer.playerId, proposedBid);
-    if (!validation.allowed) {
-      return { success: false, message: validation.reason || 'Bid rejected by purse/squad validation rules.' };
+    // Team info (optional: admin can increase bid without picking a team upfront)
+    let team: any = null;
+    if (teamId && teamId.trim() !== '') {
+      team = db.prepare('SELECT * FROM teams WHERE id = ?').get(teamId) as any;
+      if (team) {
+        // Prevent team bidding against itself
+        if (room.highestBidder && room.highestBidder.teamId === team.id) {
+          return { success: false, message: 'Your team already holds the highest bid.' };
+        }
+        // SMART PURSE & SQUAD VALIDATION
+        const validation = validateTeamBid(auctionId, team.id, room.currentPlayer.playerId, proposedBid);
+        if (!validation.allowed) {
+          return { success: false, message: validation.reason || 'Bid rejected by purse/squad validation rules.' };
+        }
+      }
     }
 
-    // Team info
-    const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(teamId) as any;
     const captain = captainId ? db.prepare('SELECT name FROM captains WHERE id = ?').get(captainId) as any : null;
 
     const bidId = 'bid_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     const timestamp = new Date().toISOString();
 
-    // Insert bid record
-    db.prepare(`
-      INSERT INTO bids (id, auction_id, player_id, team_id, captain_id, bid_amount, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(bidId, auctionId, room.currentPlayer.playerId, teamId, captainId || null, proposedBid, timestamp);
+    if (team) {
+      db.prepare(`
+        INSERT INTO bids (id, auction_id, player_id, team_id, captain_id, bid_amount, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(bidId, auctionId, room.currentPlayer.playerId, team.id, captainId || null, proposedBid, timestamp);
+    }
 
     const config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
-    let increment = config?.bid_increment || 5000;
+    let increment = config?.bid_increment || 100;
     if (config?.bid_increment_type === 'PERCENTAGE') {
-      increment = Math.round((proposedBid * (config.bid_increment / 100)) / 1000) * 1000;
+      increment = Math.round((proposedBid * (config.bid_increment / 100)) / 100) * 100;
     }
 
     const newBidEntry: LiveBid = {
       id: bidId,
-      teamId: team.id,
-      teamName: team.name,
-      teamLogo: team.logo,
-      teamColor: team.color,
+      teamId: team?.id || '',
+      teamName: team?.name || 'Bid Raised',
+      teamLogo: team?.logo || '',
+      teamColor: team?.color || '#2563EB',
       captainName: captain?.name,
       amount: proposedBid,
       timestamp,
     };
 
     room.currentBid = proposedBid;
-    room.highestBidder = {
+    room.highestBidder = team ? {
       teamId: team.id,
       teamName: team.name,
       teamLogo: team.logo,
       teamColor: team.color,
-    };
+    } : null;
     room.nextBidAmount = proposedBid + increment;
     room.bidHistory.push(newBidEntry);
 
@@ -395,9 +400,11 @@ class AuctionEngine {
 
     this.addAuditLog(
       auctionId,
-      captainId || 'CAPTAIN',
-      captain?.name || team.name,
+      captainId || 'ADMIN',
+      captain?.name || team?.name || 'AUCTIONEER',
       'BID_PLACED',
+      `Bid raised to ₹${proposedBid.toLocaleString('en-IN')}${team ? ` by ${team.name}` : ''}`
+    );
       `Bid placed by ${team.name} for ${room.currentPlayer.fullName}: ₹${proposedBid.toLocaleString('en-IN')}`
     );
 

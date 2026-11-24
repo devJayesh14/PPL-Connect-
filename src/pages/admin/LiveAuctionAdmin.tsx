@@ -207,13 +207,12 @@ export const LiveAuctionAdmin: React.FC = () => {
     }
   };
 
-  // Open "Mark Sold" Modal: "in when dont show the teams just show the team option when sold the player"
+  // Open "Mark Sold" Modal: Admin selects the winning team and confirms price
   const openMarkSoldModal = () => {
     if (!roomState?.currentPlayer) return;
 
-    // Pre-select highest bidder if available, or first team
-    const defaultTeamId = roomState.highestBidder?.teamId || (teams[0] ? teams[0].id : '');
-    setSelectedSoldTeamId(defaultTeamId);
+    // Reset selected team so admin explicitly chooses winning team
+    setSelectedSoldTeamId('');
     setSoldPriceInput(String(roomState.currentBid || roomState.currentPlayer.basePrice || 500));
     setActionError(null);
     setMarkSoldModal(true);
@@ -354,10 +353,10 @@ export const LiveAuctionAdmin: React.FC = () => {
     }
   };
 
-  // Admin placing / incrementing bid on behalf of chosen franchise team
-  const submitAdminBid = async (teamId: string, amount: number) => {
+  // Admin placing / incrementing bid on stage without requiring team selection
+  const submitAdminBid = async (teamId: string = '', amount: number) => {
     if (socket && isConnected) {
-      socket.emit('PLACE_BID', { auctionId, teamId, customAmount: amount }, (res: any) => {
+      socket.emit('PLACE_BID', { auctionId, teamId: teamId || undefined, customAmount: amount }, (res: any) => {
         if (!res.success) alert(res.message);
         else fetchRoomData();
       });
@@ -368,7 +367,7 @@ export const LiveAuctionAdmin: React.FC = () => {
       const res = await fetch(`/api/auctions/${auctionId}/place-bid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, customAmount: amount }),
+        body: JSON.stringify({ teamId: teamId || undefined, customAmount: amount }),
       });
       const data = await res.json();
       if (!data.success) alert(data.message);
@@ -380,30 +379,20 @@ export const LiveAuctionAdmin: React.FC = () => {
 
   const handleAdminBidIncrement = async (increment: number) => {
     if (!roomState?.currentPlayer) return;
-    const teamId = adminBiddingTeamId || teams[0]?.id;
-    if (!teamId) {
-      alert('Please select or create at least one team first.');
-      return;
-    }
     const currentPrice = roomState.currentBid || roomState.currentPlayer.basePrice || 500;
     const amount = currentPrice + increment;
-    await submitAdminBid(teamId, amount);
+    await submitAdminBid('', amount);
   };
 
   const handleAdminCustomBid = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomState?.currentPlayer) return;
-    const teamId = adminBiddingTeamId || teams[0]?.id;
-    if (!teamId) {
-      alert('Please select a bidding team first.');
-      return;
-    }
     const amount = Number(customBidAmount);
     if (!amount || amount <= (roomState.currentBid || 0)) {
       alert(`Bid amount must be greater than current bid (₹${roomState.currentBid || 0})`);
       return;
     }
-    await submitAdminBid(teamId, amount);
+    await submitAdminBid('', amount);
     setCustomBidAmount('');
   };
 
@@ -609,28 +598,6 @@ export const LiveAuctionAdmin: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Bidding Team Selection */}
-                  <div>
-                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Bidding Team
-                    </label>
-                    <select
-                      value={adminBiddingTeamId || (teams[0]?.id ?? '')}
-                      onChange={(e) => setAdminBiddingTeamId(e.target.value)}
-                      disabled={!roomState?.currentPlayer}
-                      className="w-full text-xs font-bold p-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                    >
-                      {teams.length === 0 ? (
-                        <option value="">No teams available</option>
-                      ) : (
-                        teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name} (₹{t.remainingPurse ?? (t as any).remaining_purse ?? 20000})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
 
                   {/* Increments */}
                   <div>

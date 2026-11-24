@@ -51,16 +51,16 @@ export const LiveBidFeed: React.FC<LiveBidFeedProps> = ({ bids }) => {
                       isHighest ? 'bg-blue-600' : 'bg-slate-700'
                     }`}
                   >
-                    {bid.teamName.charAt(0)}
+                    {bid.teamId && bid.teamName && bid.teamName !== 'Bid Raised' ? bid.teamName.charAt(0) : '₹'}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-900">
-                        {bid.teamName}
+                        {bid.teamId && bid.teamName && bid.teamName !== 'Bid Raised' ? bid.teamName : 'Bid Raised'}
                       </span>
                       {isHighest && (
                         <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded">
-                          LEADING
+                          {bid.teamId && bid.teamName && bid.teamName !== 'Bid Raised' ? 'LEADING' : 'CURRENT'}
                         </span>
                       )}
                     </div>
