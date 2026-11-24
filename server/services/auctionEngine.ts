@@ -571,7 +571,7 @@ class AuctionEngine {
     if (ap.status === 'SOLD') {
       return { success: false, message: 'This player is already SOLD and cannot be re-auctioned.' };
     }
-    const isRetained = db.prepare('SELECT 1 FROM team_retentions WHERE player_id = ? AND status != "REJECTED"').get(playerId);
+    const isRetained = db.prepare("SELECT 1 FROM team_retentions WHERE player_id = ? AND status != 'REJECTED'").get(playerId);
     if (isRetained) {
       return { success: false, message: 'This player is retained by a franchise team and cannot be re-auctioned.' };
     }

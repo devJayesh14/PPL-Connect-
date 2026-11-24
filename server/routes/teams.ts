@@ -33,10 +33,10 @@ router.get('/', (req, res) => {
     `;
     const params: any[] = [];
     if (auctionId) {
-      query += ' WHERE (t.auction_id = ? OR t.auction_id IS NULL OR t.auction_id = "")';
+      query += " WHERE (t.auction_id = ? OR t.auction_id IS NULL OR t.auction_id = '')";
       params.push(auctionId);
     } else if (tournamentId) {
-      query += ' WHERE (t.tournament_id = ? OR t.tournament_id IS NULL OR t.tournament_id = "")';
+      query += " WHERE (t.tournament_id = ? OR t.tournament_id IS NULL OR t.tournament_id = '')";
       params.push(tournamentId);
     }
     query += ' GROUP BY t.id ORDER BY t.name ASC';

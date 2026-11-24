@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: team creation foreign key resolution, auto-link teams to live auction, and prevent retained/sold players from re-entering auction',
+      message: 'fix: SQL string literal quoting in teams query and reauction player check',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',
