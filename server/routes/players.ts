@@ -293,6 +293,10 @@ router.post('/register', (req, res) => {
       return res.status(400).json({ error: 'Email ID is required.' });
     }
 
+    if (!photo || !photo.trim()) {
+      return res.status(400).json({ error: 'Player photo upload is mandatory. Please provide a photo.' });
+    }
+
     const cleanEmail = email.trim().toLowerCase();
 
     // STRICT DUPLICATE EMAIL CHECK: "same email id not allowed if then do not allow to register"

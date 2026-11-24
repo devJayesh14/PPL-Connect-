@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: lazy loading architecture, shareable player pool, admin-only live bidding & team selection on sold',
+      message: 'feat: make player photo upload mandatory in registration with validation on UI and API',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',
