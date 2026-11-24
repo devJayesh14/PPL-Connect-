@@ -76,6 +76,7 @@ router.get('/self-check', (req, res) => {
       player: {
         id: row.id,
         fullName: row.full_name,
+        photo: row.photo || '',
         maskedEmail,
         maskedMobile,
         playingRole: row.playing_role,
@@ -92,6 +93,60 @@ router.get('/self-check', (req, res) => {
   } catch (err: any) {
     console.error('Self check error:', err);
     return res.status(500).json({ error: 'Server error checking player registration' });
+  }
+});
+
+// POST Self-Update Photo from Player Self-Check screen
+router.post('/self-update-photo', (req, res) => {
+  try {
+    const { playerId, query, photo } = req.body;
+    if (!playerId || !photo) {
+      return res.status(400).json({ error: 'Player ID and photo image are required.' });
+    }
+
+    const player = db.prepare('SELECT id, full_name, mobile, email FROM players WHERE id = ?').get(playerId) as any;
+    if (!player) {
+      return res.status(404).json({ error: 'Player not found in database.' });
+    }
+
+    // Validation: if query is provided, verify it matches player's email or mobile
+    if (query) {
+      const cleanQ = String(query).trim().toLowerCase();
+      const isEmail = cleanQ.includes('@');
+      let matches = false;
+      if (isEmail && player.email && player.email.toLowerCase() === cleanQ) {
+        matches = true;
+      } else {
+        const qDigits = cleanQ.replace(/\D/g, '').slice(-10);
+        const pDigits = (player.mobile || '').replace(/\D/g, '').slice(-10);
+        if (qDigits && pDigits && (pDigits.includes(qDigits) || qDigits.includes(pDigits))) {
+          matches = true;
+        }
+      }
+      if (!matches) {
+        return res.status(403).json({ error: 'Verification failed. Please search with your own mobile number or email.' });
+      }
+    }
+
+    db.prepare('UPDATE players SET photo = ? WHERE id = ?').run(photo, playerId);
+
+    // Audit log
+    try {
+      const logId = 'log_' + Date.now();
+      db.prepare(`
+        INSERT INTO audit_logs (id, action, entity_type, entity_id, details, timestamp)
+        VALUES (?, 'PLAYER_PHOTO_SELF_UPDATED', 'PLAYER', ?, ?, ?)
+      `).run(logId, playerId, `Player ${player.full_name} updated their profile photo via self-check portal`, new Date().toISOString());
+    } catch (e) {}
+
+    return res.json({
+      success: true,
+      message: 'Profile photo updated successfully!',
+      photo
+    });
+  } catch (err: any) {
+    console.error('Self photo update error:', err);
+    return res.status(500).json({ error: 'Server error updating profile photo' });
   }
 });
 
