@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: make player photo upload mandatory in registration with validation on UI and API',
+      message: 'feat: add public player registration self-check by mobile or email with direct registration link',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

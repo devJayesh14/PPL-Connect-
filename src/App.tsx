@@ -36,6 +36,7 @@ const PlayerRegistrationPage = lazy(() => import('./pages/player/PlayerRegistrat
 const PublicAuctionView = lazy(() => import('./pages/public/PublicAuctionView').then(m => ({ default: m.PublicAuctionView })));
 const ConfirmRetentionPage = lazy(() => import('./pages/public/ConfirmRetentionPage').then(m => ({ default: m.ConfirmRetentionPage })));
 const PublicPlayersListPage = lazy(() => import('./pages/public/PublicPlayersListPage').then(m => ({ default: m.PublicPlayersListPage })));
+const PlayerSelfCheckPage = lazy(() => import('./pages/public/PlayerSelfCheckPage').then(m => ({ default: m.PlayerSelfCheckPage })));
 
 // Lightweight hardware-friendly fallback loader
 const PageLoadingFallback: React.FC = () => (
@@ -55,6 +56,7 @@ const AppContent: React.FC = () => {
 
   // Standalone public routes (No login needed)
   const isRegisterRoute =
+    currentPath === '/register' ||
     currentPath === '/register-player' ||
     currentPath.startsWith('/register-player') ||
     currentPath === '/player/register';
@@ -64,6 +66,24 @@ const AppContent: React.FC = () => {
       <Suspense fallback={<PageLoadingFallback />}>
         <div className="min-h-screen bg-slate-50 flex items-center justify-center py-10 px-4 sm:px-6 font-sans text-slate-900">
           <PlayerRegistrationPage />
+        </div>
+      </Suspense>
+    );
+  }
+
+  // Standalone public Player Self Check (Check if registered by phone or email)
+  const isSelfCheckRoute =
+    currentPath === '/check' ||
+    currentPath === '/self-check' ||
+    currentPath === '/check-status' ||
+    currentPath === '/player-check' ||
+    currentPath === '/check-registration';
+
+  if (isSelfCheckRoute) {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center py-10 px-4 sm:px-6 font-sans text-slate-900">
+          <PlayerSelfCheckPage />
         </div>
       </Suspense>
     );
@@ -158,10 +178,16 @@ const AppContent: React.FC = () => {
               <Route path="/captain/retentions" element={role === 'CAPTAIN' ? <CaptainRetentionPage /> : <Navigate to="/" replace />} />
               <Route path="/captain/squad" element={role === 'CAPTAIN' ? <CaptainDashboard /> : <Navigate to="/" replace />} />
 
-              {/* Player Specific */}
+              {/* Player Self-Check & Registration */}
+              <Route path="/register" element={<PlayerRegistrationPage />} />
               <Route path="/register-player" element={<PlayerRegistrationPage />} />
               <Route path="/player/register" element={<PlayerRegistrationPage />} />
               <Route path="/player/profile" element={<PlayerRegistrationPage />} />
+              <Route path="/check" element={<PlayerSelfCheckPage />} />
+              <Route path="/self-check" element={<PlayerSelfCheckPage />} />
+              <Route path="/check-status" element={<PlayerSelfCheckPage />} />
+              <Route path="/player-check" element={<PlayerSelfCheckPage />} />
+              <Route path="/check-registration" element={<PlayerSelfCheckPage />} />
 
               {/* Auction Views */}
               <Route path="/auction/:auctionId" element={<PublicAuctionView />} />

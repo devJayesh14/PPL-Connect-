@@ -14,6 +14,7 @@ import {
   X,
   Radio,
   Gavel,
+  Search,
 } from 'lucide-react';
 
 export const PlayerRegistrationPage: React.FC = () => {
@@ -293,6 +294,17 @@ export const PlayerRegistrationPage: React.FC = () => {
         <p className="text-xs text-slate-500 font-medium">
           Official Player Registration Portal
         </p>
+
+        {/* Quick Self-Check Banner */}
+        <div className="pt-2">
+          <Link
+            to="/check-registration"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3.5 py-1.5 rounded-full shadow-xs transition-colors"
+          >
+            <Search className="w-3.5 h-3.5 text-blue-600" />
+            Already registered? Check your registration status here →
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 shadow-sm">

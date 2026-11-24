@@ -3,6 +3,98 @@ import { db } from '../db/index.js';
 
 const router = Router();
 
+// GET Public Self-Check: Players can check if they are registered by mobile or email
+router.get('/self-check', (req, res) => {
+  try {
+    const rawQuery = String(req.query.q || req.query.query || '').trim();
+    if (!rawQuery) {
+      return res.status(400).json({ error: 'Please enter a mobile number or email address.' });
+    }
+
+    const isEmail = rawQuery.includes('@');
+    let row: any = null;
+
+    if (isEmail) {
+      row = db.prepare(`
+        SELECT p.id, p.full_name, p.mobile, p.email, p.playing_role, p.batting_style, p.bowling_style,
+               COALESCE(p.status, 'PENDING') as player_status, p.created_at, p.photo,
+               pr.status as registration_status, pr.base_price, pr.auction_id,
+               tr.status as retention_status, t.name as retained_team
+        FROM players p
+        LEFT JOIN player_registrations pr ON p.id = pr.player_id
+        LEFT JOIN team_retentions tr ON p.id = tr.player_id AND tr.status = 'CONFIRMED'
+        LEFT JOIN teams t ON tr.team_id = t.id
+        WHERE LOWER(p.email) = ?
+        ORDER BY p.created_at DESC LIMIT 1
+      `).get(rawQuery.toLowerCase());
+    } else {
+      const digits = rawQuery.replace(/\\D/g, '');
+      const last10 = digits.slice(-10);
+      if (last10.length < 5) {
+        return res.status(400).json({ error: 'Please enter at least 5 digits of your mobile number or a valid email.' });
+      }
+
+      row = db.prepare(`
+        SELECT p.id, p.full_name, p.mobile, p.email, p.playing_role, p.batting_style, p.bowling_style,
+               COALESCE(p.status, 'PENDING') as player_status, p.created_at, p.photo,
+               pr.status as registration_status, pr.base_price, pr.auction_id,
+               tr.status as retention_status, t.name as retained_team
+        FROM players p
+        LEFT JOIN player_registrations pr ON p.id = pr.player_id
+        LEFT JOIN team_retentions tr ON p.id = tr.player_id AND tr.status = 'CONFIRMED'
+        LEFT JOIN teams t ON tr.team_id = t.id
+        WHERE REPLACE(REPLACE(REPLACE(p.mobile, ' ', ''), '-', ''), '+91', '') LIKE ?
+           OR p.mobile LIKE ?
+        ORDER BY p.created_at DESC LIMIT 1
+      `).get('%' + last10 + '%', '%' + last10 + '%');
+    }
+
+    if (!row) {
+      return res.json({
+        found: false,
+        query: rawQuery,
+        message: 'No player registration found for this mobile number or email.',
+        registerUrl: '/register'
+      });
+    }
+
+    // Privacy masking
+    let maskedEmail = '';
+    if (row.email) {
+      const [u, d] = row.email.split('@');
+      maskedEmail = (u.length <= 2 ? u[0] + '*' : u[0] + '*'.repeat(Math.min(u.length - 2, 5)) + u.slice(-1)) + '@' + d;
+    }
+
+    let maskedMobile = '';
+    if (row.mobile) {
+      const cleanMob = row.mobile.replace(/\\D/g, '').slice(-10);
+      maskedMobile = cleanMob.length === 10 ? cleanMob.slice(0, 3) + '****' + cleanMob.slice(7) : '******' + cleanMob.slice(-4);
+    }
+
+    return res.json({
+      found: true,
+      player: {
+        id: row.id,
+        fullName: row.full_name,
+        maskedEmail,
+        maskedMobile,
+        playingRole: row.playing_role,
+        battingStyle: row.batting_style,
+        bowlingStyle: row.bowling_style,
+        status: row.player_status,
+        basePrice: row.base_price || 500,
+        isRetained: !!row.retained_team,
+        retainedTeam: row.retained_team || null,
+        registeredAt: row.created_at,
+        hasPhoto: !!(row.photo && row.photo.length > 50)
+      }
+    });
+  } catch (err: any) {
+    console.error('Self check error:', err);
+    return res.status(500).json({ error: 'Server error checking player registration' });
+  }
+});
+
 // GET all players with approval status for Player Management (with pagination)
 router.get('/management', (req, res) => {
   try {

@@ -62,11 +62,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* Player Self-Check Action (Check if registered by phone or email) */}
+            <Link
+              to="/check-registration"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold transition-colors"
+              title="Check if you are registered"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Check Status</span>
+            </Link>
+
             {/* Player Quick Register Action (ONLY shown when NOT logged in) */}
             {!isLoggedIn && (
-              <Link to="/register-player" className="hidden sm:inline-flex">
-                <Button size="sm" variant="outline" className="text-xs" icon={<UserCheck className="w-3.5 h-3.5" />}>
-                  <span className="hidden md:inline">Player Registration</span>
+              <Link to="/register" className="hidden sm:inline-flex">
+                <Button size="sm" variant="outline" className="text-xs" icon={<Users className="w-3.5 h-3.5" />}>
+                  <span className="hidden md:inline">Register Player</span>
                   <span className="md:hidden">Register</span>
                 </Button>
               </Link>
