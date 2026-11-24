@@ -106,7 +106,7 @@ router.get('/public-pool', (req, res) => {
         t.name as retained_team_name,
         t.logo as retained_team_logo,
         ts.name as sold_team_name,
-        ap.sold_price
+        ap.final_bid as sold_price
       FROM players p
       LEFT JOIN (
         SELECT player_id, base_price, status,
@@ -116,7 +116,7 @@ router.get('/public-pool', (req, res) => {
       LEFT JOIN team_retentions tr ON p.id = tr.player_id AND tr.status = 'CONFIRMED'
       LEFT JOIN teams t ON tr.team_id = t.id
       LEFT JOIN auction_players ap ON p.id = ap.player_id AND ap.status = 'SOLD'
-      LEFT JOIN teams ts ON ap.team_id = ts.id
+      LEFT JOIN teams ts ON ap.winning_team_id = ts.id
       ${whereClause}
       ORDER BY p.full_name ASC
     `).all(...params);
