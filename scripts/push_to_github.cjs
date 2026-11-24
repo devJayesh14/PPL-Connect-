@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: add captains list access for all roles, link captains to players and exclude captained players from auction pool',
+      message: 'fix: remove syntax error in auctionEngine and add fallback auction_configs for callNextPlayer',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

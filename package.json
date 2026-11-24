@@ -10,7 +10,10 @@
     "client": "vite",
     "dev": "vite",
     "build": "vite build",
-    "seed": "tsx server/db/seed.ts"
+    "seed": "tsx server/db/seed.ts",
+    "backup": "node scripts/backup_manager.cjs backup",
+    "restore": "node scripts/backup_manager.cjs restore",
+    "db:status": "node scripts/backup_manager.cjs status"
   },
   "keywords": [],
   "author": "",

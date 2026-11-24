@@ -6,12 +6,29 @@ import { formatCurrency } from '../../utils/formatters';
 import { CheckCircle2, XCircle, RotateCcw, Search } from 'lucide-react';
 
 export const SoldUnsoldPage: React.FC<{ initialTab?: 'sold' | 'unsold' }> = ({ initialTab = 'sold' }) => {
-  const auctionId = 'auc_default';
+  const [auctionId, setAuctionId] = useState<string>('auc_default');
+  const [auctionsList, setAuctionsList] = useState<any[]>([]);
   const [tab, setTab] = useState<'sold' | 'unsold'>(initialTab);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Discover available auctions and default to live/active auction
+  useEffect(() => {
+    fetch('/api/auctions')
+      .then((res) => res.json())
+      .then((list: any[]) => {
+        if (list && list.length > 0) {
+          setAuctionsList(list);
+          const liveOrDone = list.find((a) => a.status === 'LIVE' || a.status === 'COMPLETED');
+          if (liveOrDone) setAuctionId(liveOrDone.id);
+          else setAuctionId(list[0].id);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
   const fetchData = async () => {
+    if (!auctionId) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/reports/${auctionId}/summary`);
@@ -52,24 +69,40 @@ export const SoldUnsoldPage: React.FC<{ initialTab?: 'sold' | 'unsold' }> = ({ i
           </p>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="inline-flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
-          <button
-            onClick={() => setTab('sold')}
-            className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-              tab === 'sold' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            Sold Players ({data?.soldPlayers?.length || 0})
-          </button>
-          <button
-            onClick={() => setTab('unsold')}
-            className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-              tab === 'unsold' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'
-            }`}
-          >
-            Unsold Players ({data?.unsoldPlayers?.length || 0})
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {auctionsList.length > 1 && (
+            <select
+              value={auctionId}
+              onChange={(e) => setAuctionId(e.target.value)}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs"
+            >
+              {auctionsList.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.status})
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Tab Switcher */}
+          <div className="inline-flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+            <button
+              onClick={() => setTab('sold')}
+              className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                tab === 'sold' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'
+              }`}
+            >
+              Sold Players ({data?.soldPlayers?.length || 0})
+            </button>
+            <button
+              onClick={() => setTab('unsold')}
+              className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
+                tab === 'unsold' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'
+              }`}
+            >
+              Unsold Players ({data?.unsoldPlayers?.length || 0})
+            </button>
+          </div>
         </div>
       </div>
 

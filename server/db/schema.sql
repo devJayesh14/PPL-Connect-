@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS captains (
     mobile TEXT NOT NULL,
     email TEXT NOT NULL,
     status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    player_id TEXT,
     created_at TEXT NOT NULL
 );
 

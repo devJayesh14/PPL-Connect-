@@ -1,0 +1,26 @@
+[
+  {
+    "id": "tm_1795538420079",
+    "tournament_id": "tour_ppl_2026",
+    "auction_id": "auc_default",
+    "name": "Surat Super Kings",
+    "short_name": "SSK",
+    "logo": "",
+    "color": "#2563EB",
+    "initial_purse": 20000,
+    "spent_purse": 0,
+    "remaining_purse": 20000,
+    "captain_id": "cap_1795538420079",
+    "created_at": "2026-11-24T16:40:20.079Z",
+    "squad_count": 1,
+    "squad": [
+      {
+        "player_id": "ply_1795358537433_l9sl3",
+        "name": "Dharmesh Surati",
+        "acquisition_type": "RETENTION",
+        "price": 0,
+        "joined_at": "2026-11-24T16:41:01.528Z"
+      }
+    ]
+  }
+]

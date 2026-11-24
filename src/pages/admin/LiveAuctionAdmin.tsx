@@ -28,6 +28,8 @@ import {
   Coins,
   Shield,
   Radio,
+  Trophy,
+  Flag,
 } from 'lucide-react';
 
 export const LiveAuctionAdmin: React.FC = () => {
@@ -353,6 +355,52 @@ export const LiveAuctionAdmin: React.FC = () => {
     }
   };
 
+  // Finish / Conclude Entire Live Auction
+  const handleFinishAuction = async () => {
+    if (!confirm('Are you sure you want to FINISH and COMPLETE this live auction?\\n\\nThis will officially conclude the auction, stop bidding, and finalize all squads and reports.')) {
+      return;
+    }
+
+    setActionLoading(true);
+    setActionError(null);
+
+    const onCompleteSuccess = () => {
+      confetti({
+        particleCount: 150,
+        spread: 100,
+        origin: { y: 0.5 },
+      });
+      fetchRoomData();
+      alert('🎉 Auction officially FINISHED! Squads and sold reports have been finalized.');
+    };
+
+    if (socket && isConnected) {
+      socket.emit('END_AUCTION', { auctionId }, (res: any) => {
+        setActionLoading(false);
+        if (res && !res.success) {
+          setActionError(res.message || 'Error ending auction');
+        } else {
+          onCompleteSuccess();
+        }
+      });
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/auctions/${auctionId}/end-auction`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) {
+        setActionError(data.message || 'Error ending auction');
+      } else {
+        onCompleteSuccess();
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'Error ending auction');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Admin placing / incrementing bid on stage without requiring team selection
   const submitAdminBid = async (teamId: string = '', amount: number) => {
     if (socket && isConnected) {
@@ -498,6 +546,17 @@ export const LiveAuctionAdmin: React.FC = () => {
             >
               MARK UNSOLD
             </Button>
+
+            {/* FINISH AUCTION BUTTON */}
+            <Button
+              size="sm"
+              onClick={handleFinishAuction}
+              loading={actionLoading}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold shadow-xs"
+              icon={<Flag className="w-3.5 h-3.5 text-white" />}
+            >
+              Finish Auction
+            </Button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -518,6 +577,46 @@ export const LiveAuctionAdmin: React.FC = () => {
           <button onClick={() => setActionError(null)} className="text-slate-400 hover:text-slate-600 text-xs">
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* When Auction is Completed */}
+      {roomState?.status === 'COMPLETED' && (
+        <div className="p-4 bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-amber-500/10 border border-emerald-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <Trophy className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <div className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                <span>Auction Officially COMPLETED!</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white uppercase tracking-wider">
+                  Finalized
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                All bidding rounds have concluded. Team squads, purse accounts, and player acquisitions are locked.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate('/sold-players')}
+              icon={<CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+            >
+              Sold & Unsold
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => navigate('/final-squads')}
+              icon={<Trophy className="w-3.5 h-3.5" />}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            >
+              View Final Squads
+            </Button>
+          </div>
         </div>
       )}
 

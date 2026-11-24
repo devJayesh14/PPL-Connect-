@@ -189,7 +189,31 @@ class AuctionEngine {
 
   // 1. Start Auction / Call Next Player
   public callNextPlayer(auctionId: string, specificPlayerId?: string): { success: boolean; message?: string } {
-    const config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
+    let config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
+    if (!config) {
+      try {
+        db.prepare(`
+          INSERT OR IGNORE INTO auction_configs (
+            id, auction_id, total_purse_per_team, starting_purse, allow_different_purse_per_team,
+            allow_purse_adjustment, allow_admin_manual_purse_adjustment, min_base_price,
+            default_base_price, max_base_price, allow_individual_base_price, bid_increment,
+            min_players_per_team, max_players_per_team, min_overseas_players, max_overseas_players,
+            enable_retention, min_retentions, max_retentions, retention_uses_purse,
+            retention_price_model, retention_price_config, bid_timer_seconds, auto_extension,
+            registration_open
+          ) VALUES (
+            ?, ?, 20000, 20000, 0,
+            1, 1, 100,
+            500, 50000, 1, 100,
+            11, 15, 0, 4,
+            1, 0, 1, 0,
+            'FIXED', '[0]', 30, 1,
+            1
+          )
+        `).run('cfg_' + auctionId, auctionId);
+        config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
+      } catch (e) {}
+    }
     if (!config) return { success: false, message: 'Auction configuration not found' };
 
     // Update auction status to LIVE if draft or scheduled
@@ -444,8 +468,6 @@ class AuctionEngine {
       captain?.name || team?.name || 'AUCTIONEER',
       'BID_PLACED',
       `Bid raised to ₹${proposedBid.toLocaleString('en-IN')}${team ? ` by ${team.name}` : ''}`
-    );
-      `Bid placed by ${team.name} for ${room.currentPlayer.fullName}: ₹${proposedBid.toLocaleString('en-IN')}`
     );
 
     this.broadcast(auctionId);

@@ -15,12 +15,29 @@ import {
 } from 'lucide-react';
 
 export const FinalSquadsPage: React.FC = () => {
-  const auctionId = 'auc_default';
+  const [auctionId, setAuctionId] = useState<string>('auc_default');
+  const [auctionsList, setAuctionsList] = useState<any[]>([]);
   const [squads, setSquads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [synced, setSynced] = useState(false);
 
+  // Discover available auctions and default to live/completed auction
+  useEffect(() => {
+    fetch('/api/auctions')
+      .then((res) => res.json())
+      .then((list: any[]) => {
+        if (list && list.length > 0) {
+          setAuctionsList(list);
+          const liveOrDone = list.find((a) => a.status === 'LIVE' || a.status === 'COMPLETED');
+          if (liveOrDone) setAuctionId(liveOrDone.id);
+          else setAuctionId(list[0].id);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
   const fetchSquads = async () => {
+    if (!auctionId) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/reports/${auctionId}/final-squads`);
@@ -77,6 +94,19 @@ export const FinalSquadsPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {auctionsList.length > 1 && (
+            <select
+              value={auctionId}
+              onChange={(e) => setAuctionId(e.target.value)}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs"
+            >
+              {auctionsList.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.status})
+                </option>
+              ))}
+            </select>
+          )}
           <Button
             size="sm"
             variant="secondary"

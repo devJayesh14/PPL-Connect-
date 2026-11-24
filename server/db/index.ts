@@ -82,11 +82,36 @@ export function reloadDatabase(dataBuf?: Buffer): boolean {
       try {
         const testDb = new Database(tmpPath);
         const check = testDb.pragma('integrity_check') as any;
+        let incomingPlayersCount = 0;
+        let incomingAuctionsCount = 0;
+        try {
+          incomingPlayersCount = (testDb.prepare("SELECT count(*) as c FROM players").get() as any)?.c || 0;
+          incomingAuctionsCount = (testDb.prepare("SELECT count(*) as c FROM auctions").get() as any)?.c || 0;
+        } catch (e) {}
         testDb.close();
+
         if (!check || check[0]?.integrity_check !== 'ok') {
           console.error('[DB] Snapshot buffer failed integrity check. Aborting reload.');
           try { fs.unlinkSync(tmpPath); } catch (e) {}
           return false;
+        }
+
+        // Safety Guard: Don't allow an empty/partial snapshot to overwrite a populated active DB
+        if (activeDb) {
+          try {
+            const currentPlayersCount = (activeDb.prepare("SELECT count(*) as c FROM players").get() as any)?.c || 0;
+            const currentAuctionsCount = (activeDb.prepare("SELECT count(*) as c FROM auctions").get() as any)?.c || 0;
+            if (currentAuctionsCount > 0 && incomingAuctionsCount === 0) {
+              console.warn('[DB] Incoming snapshot is missing auctions while active DB has auctions. Aborting overwrite to prevent data loss.');
+              try { fs.unlinkSync(tmpPath); } catch (e) {}
+              return false;
+            }
+            if (currentPlayersCount > incomingPlayersCount + 3) {
+              console.warn(`[DB] Incoming snapshot has fewer players (${incomingPlayersCount}) than active DB (${currentPlayersCount}). Aborting overwrite to prevent data loss.`);
+              try { fs.unlinkSync(tmpPath); } catch (e) {}
+              return false;
+            }
+          } catch (e) {}
         }
       } catch (checkErr) {
         console.error('[DB] Error validating snapshot integrity:', checkErr);
