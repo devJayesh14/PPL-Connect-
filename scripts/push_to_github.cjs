@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: fix auctions.share_link NOT NULL constraint failure in player retention creation',
+      message: 'fix: team creation foreign key resolution, auto-link teams to live auction, and prevent retained/sold players from re-entering auction',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

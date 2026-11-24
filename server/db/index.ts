@@ -193,6 +193,86 @@ export function initDatabase() {
     // Columns already exist
   }
 
+  // Auto-repair team and captain linkages, auctions, and prune retained players from pool
+  try {
+    const nowTime = new Date().toISOString();
+
+    // 1. Ensure default tournament and auction exist
+    const defaultTour = activeDb.prepare('SELECT id FROM tournaments WHERE id = ?').get('tour_ppl_2026');
+    if (!defaultTour) {
+      activeDb.prepare(`
+        INSERT OR IGNORE INTO tournaments (id, name, description, sport, status, start_date, end_date, location, logo, banner, created_at, updated_at)
+        VALUES ('tour_ppl_2026', 'Priyanka Premiere League (PPL)', 'Official PPL Championship Tournament', 'CRICKET', 'UPCOMING', '2026-12-10', '2026-12-25', 'Surat, Gujarat', '/logo.png', '', ?, ?)
+      `).run(nowTime, nowTime);
+    }
+
+    const defaultAuc = activeDb.prepare('SELECT id FROM auctions WHERE id = ?').get('auc_default');
+    if (!defaultAuc) {
+      activeDb.prepare(`
+        INSERT OR IGNORE INTO auctions (id, tournament_id, name, description, auction_date, start_time, end_time, timezone, status, logo, banner, share_link, created_at, updated_at)
+        VALUES ('auc_default', 'tour_ppl_2026', 'PPL Grand Auction 2026', 'Official Player Auction for Priyanka Premiere League', '2026-12-10', '10:00 AM', '06:00 PM', 'IST (+05:30)', 'REGISTRATION_OPEN', '/logo.png', '', '/auction/ppl-2026', ?, ?)
+      `).run(nowTime, nowTime);
+
+      activeDb.prepare(`
+        INSERT OR IGNORE INTO auction_configs (
+          id, auction_id, total_purse_per_team, starting_purse, allow_different_purse_per_team,
+          allow_purse_adjustment, allow_admin_manual_purse_adjustment, min_base_price,
+          default_base_price, max_base_price, allow_individual_base_price, bid_increment,
+          min_players_per_team, max_players_per_team, min_overseas_players, max_overseas_players,
+          enable_retention, min_retentions, max_retentions, retention_uses_purse,
+          retention_price_model, retention_price_config, bid_timer_seconds, auto_extension,
+          registration_open
+        ) VALUES (
+          'cfg_auc_default', 'auc_default', 20000, 20000, 0,
+          1, 1, 100,
+          500, 50000, 1, 100,
+          11, 15, 0, 4,
+          1, 0, 1, 0,
+          'FIXED', '[0]', 30, 1,
+          1
+        )
+      `).run();
+    }
+
+    // 2. Link all unlinked teams to tour_ppl_2026 and auc_default
+    activeDb.prepare(`
+      UPDATE teams 
+      SET tournament_id = COALESCE(tournament_id, 'tour_ppl_2026'),
+          auction_id = COALESCE(auction_id, 'auc_default')
+      WHERE tournament_id IS NULL OR auction_id IS NULL OR tournament_id = '' OR auction_id = ''
+    `).run();
+
+    // 3. Auto-link captains to teams and approve pending captains
+    activeDb.prepare(`
+      UPDATE teams 
+      SET captain_id = (SELECT id FROM captains WHERE team_id = teams.id LIMIT 1)
+      WHERE captain_id IS NULL AND EXISTS (SELECT 1 FROM captains WHERE team_id = teams.id)
+    `).run();
+
+    activeDb.prepare(`
+      UPDATE captains 
+      SET status = 'APPROVED', auction_id = COALESCE(NULLIF(auction_id, ''), 'auc_default')
+      WHERE status = 'PENDING' OR auction_id IS NULL OR auction_id = ''
+    `).run();
+
+    activeDb.prepare(`
+      UPDATE users 
+      SET status = 'ACTIVE' 
+      WHERE role = 'CAPTAIN' AND (status = 'PENDING' OR status IS NULL)
+    `).run();
+
+    // 4. Remove any retained/squad players from pending auction pool
+    activeDb.prepare(`
+      DELETE FROM auction_players 
+      WHERE (
+        player_id IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
+        OR player_id IN (SELECT player_id FROM team_squads)
+      ) AND status = 'PENDING'
+    `).run();
+  } catch (e) {
+    console.warn('[DB AUTO-REPAIR]', e);
+  }
+
   console.log('[DB] Database initialized successfully at:', dbPath);
 }
 

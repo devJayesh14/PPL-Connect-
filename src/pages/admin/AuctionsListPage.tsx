@@ -34,7 +34,7 @@ export const AuctionsListPage: React.FC = () => {
   // Quick Create Auction Modal
   const [createModal, setCreateModal] = useState(false);
   const [newAuctionName, setNewAuctionName] = useState('');
-  const [newTournamentId, setNewTournamentId] = useState('tour_default');
+  const [newTournamentId, setNewTournamentId] = useState('tour_ppl_2026');
   const [newAuctionDate, setNewAuctionDate] = useState('2026-12-15');
   const [newStartTime, setNewStartTime] = useState('10:00 AM');
   const [newBasePrice, setNewBasePrice] = useState('500');
@@ -111,7 +111,7 @@ export const AuctionsListPage: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tournamentId: newTournamentId || 'tour_default',
+          tournamentId: newTournamentId || 'tour_ppl_2026',
           name: newAuctionName.trim(),
           description: newDescription.trim() || 'Premier league sports player auction.',
           auctionDate: newAuctionDate,

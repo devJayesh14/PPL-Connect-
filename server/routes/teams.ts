@@ -7,22 +7,39 @@ const router = Router();
 router.get('/', (req, res) => {
   try {
     const { auctionId, tournamentId } = req.query;
+
+    if (auctionId) {
+      // Auto-link any existing teams that don't have an auction_id to this active auction
+      try {
+        db.prepare(`
+          UPDATE teams 
+          SET auction_id = ? 
+          WHERE auction_id IS NULL OR auction_id = ''
+        `).run(auctionId);
+      } catch (e) {}
+    }
+
     let query = `
-      SELECT t.*, c.name as captain_name, c.email as captain_email, c.mobile as captain_mobile, c.status as captain_status,
+      SELECT t.*, 
+        COALESCE(c.name, c_fallback.name) as captain_name, 
+        COALESCE(c.email, c_fallback.email) as captain_email, 
+        COALESCE(c.mobile, c_fallback.mobile) as captain_mobile, 
+        COALESCE(c.status, c_fallback.status, 'APPROVED') as captain_status,
         (SELECT COUNT(*) FROM team_squads WHERE team_id = t.id) as squad_count,
         (SELECT COUNT(*) FROM team_retentions WHERE team_id = t.id) as retention_count
       FROM teams t
       LEFT JOIN captains c ON t.captain_id = c.id
+      LEFT JOIN captains c_fallback ON c_fallback.team_id = t.id
     `;
     const params: any[] = [];
     if (auctionId) {
-      query += ' WHERE t.auction_id = ?';
+      query += ' WHERE (t.auction_id = ? OR t.auction_id IS NULL OR t.auction_id = "")';
       params.push(auctionId);
     } else if (tournamentId) {
-      query += ' WHERE t.tournament_id = ?';
+      query += ' WHERE (t.tournament_id = ? OR t.tournament_id IS NULL OR t.tournament_id = "")';
       params.push(tournamentId);
     }
-    query += ' ORDER BY t.name ASC';
+    query += ' GROUP BY t.id ORDER BY t.name ASC';
 
     const teams = db.prepare(query).all(...params);
     res.json(teams);
@@ -35,9 +52,15 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   try {
     const team = db.prepare(`
-      SELECT t.*, c.id as captain_id, c.name as captain_name, c.email as captain_email, c.mobile as captain_mobile, c.status as captain_status
+      SELECT t.*, 
+        COALESCE(c.id, c_fallback.id) as captain_id, 
+        COALESCE(c.name, c_fallback.name) as captain_name, 
+        COALESCE(c.email, c_fallback.email) as captain_email, 
+        COALESCE(c.mobile, c_fallback.mobile) as captain_mobile, 
+        COALESCE(c.status, c_fallback.status, 'APPROVED') as captain_status
       FROM teams t
       LEFT JOIN captains c ON t.captain_id = c.id
+      LEFT JOIN captains c_fallback ON c_fallback.team_id = t.id
       WHERE t.id = ?
     `).get(req.params.id) as any;
 
@@ -73,35 +96,75 @@ router.get('/:id', (req, res) => {
 // POST create team
 router.post('/', (req, res) => {
   try {
-    const { tournamentId, auctionId, name, shortName, logo, color, initialPurse = 20000, captainName, captainEmail, captainMobile } = req.body;
-    if (!name || !tournamentId) {
-      return res.status(400).json({ error: 'Team name and tournamentId are required' });
+    let { tournamentId, auctionId, name, shortName, logo, color, initialPurse = 20000, captainName, captainEmail, captainMobile } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Team name is required' });
     }
 
-    const id = 'tm_' + Date.now();
     const now = new Date().toISOString();
+
+    // 1. Resolve Tournament safely
+    let targetTourId = tournamentId;
+    let tour = targetTourId ? db.prepare('SELECT id FROM tournaments WHERE id = ?').get(targetTourId) as any : null;
+    if (!tour) {
+      tour = db.prepare('SELECT id FROM tournaments WHERE id = ?').get('tour_ppl_2026') as any;
+    }
+    if (!tour) {
+      tour = db.prepare('SELECT id FROM tournaments ORDER BY created_at DESC LIMIT 1').get() as any;
+    }
+    if (!tour) {
+      targetTourId = 'tour_ppl_2026';
+      db.prepare(`
+        INSERT OR IGNORE INTO tournaments (id, name, description, sport, status, start_date, end_date, location, logo, banner, created_at, updated_at)
+        VALUES (?, 'Priyanka Premiere League (PPL)', 'Official PPL Championship Tournament', 'CRICKET', 'UPCOMING', '2026-12-10', '2026-12-25', 'Surat, Gujarat', '/logo.png', '', ?, ?)
+      `).run(targetTourId, now, now);
+      tour = { id: targetTourId };
+    }
+    targetTourId = tour.id;
+
+    // 2. Resolve Auction safely
+    let targetAucId = auctionId;
+    let auc = targetAucId ? db.prepare('SELECT id FROM auctions WHERE id = ?').get(targetAucId) as any : null;
+    if (!auc) {
+      auc = db.prepare('SELECT id FROM auctions WHERE id = ?').get('auc_default') as any;
+    }
+    if (!auc) {
+      auc = db.prepare('SELECT id FROM auctions ORDER BY created_at DESC LIMIT 1').get() as any;
+    }
+    if (!auc) {
+      const aucId = 'auc_default';
+      const shareLink = `/auction/ppl-2026`;
+      db.prepare(`
+        INSERT OR IGNORE INTO auctions (id, tournament_id, name, description, auction_date, start_time, end_time, timezone, status, logo, banner, share_link, created_at, updated_at)
+        VALUES (?, ?, 'PPL Grand Auction 2026', 'Official Player Auction for Priyanka Premiere League', '2026-12-10', '10:00 AM', '06:00 PM', 'IST (+05:30)', 'REGISTRATION_OPEN', '/logo.png', '', ?, ?, ?)
+      `).run(aucId, targetTourId, shareLink, now, now);
+      auc = db.prepare('SELECT id FROM auctions WHERE id = ?').get(aucId) as any;
+    }
+    targetAucId = auc ? auc.id : null;
+
+    const id = 'tm_' + Date.now();
 
     const createTx = db.transaction(() => {
       db.prepare(`
         INSERT INTO teams (id, tournament_id, auction_id, name, short_name, logo, color, initial_purse, spent_purse, remaining_purse, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-      `).run(id, tournamentId, auctionId || null, name, shortName || name.substring(0, 3).toUpperCase(), logo || '', color || '#2563EB', initialPurse, initialPurse, now);
+      `).run(id, targetTourId, targetAucId, name.trim(), (shortName || name.substring(0, 3)).toUpperCase().trim(), logo || '', color || '#2563EB', initialPurse, initialPurse, now);
 
       if (captainName && captainEmail) {
         const capId = 'cap_' + Date.now();
         db.prepare(`
           INSERT INTO captains (id, team_id, auction_id, name, mobile, email, status, created_at)
           VALUES (?, ?, ?, ?, ?, ?, 'APPROVED', ?)
-        `).run(capId, id, auctionId || '', captainName, captainMobile || '', captainEmail, now);
+        `).run(capId, id, targetAucId, captainName, captainMobile || '', captainEmail.trim().toLowerCase(), now);
 
         db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(capId, id);
       }
 
-      if (auctionId) {
+      if (targetAucId) {
         db.prepare(`
           INSERT INTO purse_transactions (id, auction_id, team_id, type, amount, balance_after, description, created_by, created_at)
           VALUES (?, ?, ?, 'INITIAL', ?, ?, 'Initial purse allocation', 'ADMIN', ?)
-        `).run('ptx_' + Date.now(), auctionId, id, initialPurse, initialPurse, now);
+        `).run('ptx_' + Date.now(), targetAucId, id, initialPurse, initialPurse, now);
       }
     });
 

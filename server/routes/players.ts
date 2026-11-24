@@ -245,15 +245,23 @@ router.patch('/:id/approval', (req, res) => {
       }
 
       if (status === 'APPROVED' && targetAuc) {
-        const existingInPool = db.prepare('SELECT * FROM auction_players WHERE auction_id = ? AND player_id = ?').get(targetAuc, player.id) as any;
-        if (!existingInPool) {
-          const maxOrderRow = db.prepare('SELECT MAX(current_order) as maxOrder FROM auction_players WHERE auction_id = ?').get(targetAuc) as any;
-          const nextOrder = (maxOrderRow?.maxOrder || 0) + 1;
-          const apId = 'ap_' + Date.now();
-          db.prepare(`
-            INSERT INTO auction_players (id, auction_id, player_id, base_price, current_order, status, created_at)
-            VALUES (?, ?, ?, 500, ?, 'PENDING', ?)
-          `).run(apId, targetAuc, player.id, nextOrder, now);
+        const isRetainedOrSquad = db.prepare(`
+          SELECT 1 FROM team_retentions WHERE player_id = ? AND status != 'REJECTED'
+          UNION
+          SELECT 1 FROM team_squads WHERE player_id = ?
+        `).get(player.id, player.id);
+
+        if (!isRetainedOrSquad) {
+          const existingInPool = db.prepare('SELECT * FROM auction_players WHERE auction_id = ? AND player_id = ?').get(targetAuc, player.id) as any;
+          if (!existingInPool) {
+            const maxOrderRow = db.prepare('SELECT MAX(current_order) as maxOrder FROM auction_players WHERE auction_id = ?').get(targetAuc) as any;
+            const nextOrder = (maxOrderRow?.maxOrder || 0) + 1;
+            const apId = 'ap_' + Date.now();
+            db.prepare(`
+              INSERT INTO auction_players (id, auction_id, player_id, base_price, current_order, status, created_at)
+              VALUES (?, ?, ?, 500, ?, 'PENDING', ?)
+            `).run(apId, targetAuc, player.id, nextOrder, now);
+          }
         }
       } else if (status === 'REJECTED' && targetAuc) {
         db.prepare("DELETE FROM auction_players WHERE auction_id = ? AND player_id = ? AND status = 'PENDING'").run(targetAuc, player.id);
@@ -341,6 +349,10 @@ router.get('/pool/:auctionId', (req, res) => {
     if (status) {
       query += ' AND ap.status = ?';
       params.push(status);
+      if (status === 'PENDING') {
+        query += ` AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')`;
+        query += ` AND ap.player_id NOT IN (SELECT player_id FROM team_squads)`;
+      }
     }
     if (search) {
       query += ' AND p.full_name LIKE ?';
@@ -545,7 +557,13 @@ router.post('/sync-all-to-pool/:auctionId', (req, res) => {
     const { auctionId } = req.params;
     const config = db.prepare('SELECT default_base_price FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
     const defaultBasePrice = config?.default_base_price || 500;
-    const allPlayers = db.prepare('SELECT * FROM players').all() as any[];
+
+    // STRICT: Only sync players who are NOT retained and NOT in any squad
+    const allPlayers = db.prepare(`
+      SELECT p.* FROM players p
+      WHERE p.id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
+        AND p.id NOT IN (SELECT player_id FROM team_squads)
+    `).all() as any[];
     const now = new Date().toISOString();
 
     let addedCount = 0;
@@ -588,21 +606,29 @@ router.patch('/registrations/:id/status', (req, res) => {
         WHERE id = ?
       `).run(status, remarks || null, req.params.id);
 
-      // If APPROVED, auto-enter into auction_players pool if not already in pool!
+      // If APPROVED, auto-enter into auction_players pool if not already in pool, and NOT retained/in squad!
       if (status === 'APPROVED') {
-        const existingInPool = db.prepare('SELECT * FROM auction_players WHERE auction_id = ? AND player_id = ?').get(reg.auction_id, reg.player_id);
-        if (!existingInPool) {
-          const config = db.prepare('SELECT default_base_price FROM auction_configs WHERE auction_id = ?').get(reg.auction_id) as any;
-          const assignedBasePrice = reg.base_price || config?.default_base_price || 500;
+        const isRetainedOrSquad = db.prepare(`
+          SELECT 1 FROM team_retentions WHERE player_id = ? AND status != 'REJECTED'
+          UNION
+          SELECT 1 FROM team_squads WHERE player_id = ?
+        `).get(reg.player_id, reg.player_id);
 
-          const maxOrderRow = db.prepare('SELECT MAX(current_order) as maxOrder FROM auction_players WHERE auction_id = ?').get(reg.auction_id) as any;
-          const nextOrder = (maxOrderRow?.maxOrder || 0) + 1;
+        if (!isRetainedOrSquad) {
+          const existingInPool = db.prepare('SELECT * FROM auction_players WHERE auction_id = ? AND player_id = ?').get(reg.auction_id, reg.player_id);
+          if (!existingInPool) {
+            const config = db.prepare('SELECT default_base_price FROM auction_configs WHERE auction_id = ?').get(reg.auction_id) as any;
+            const assignedBasePrice = reg.base_price || config?.default_base_price || 500;
 
-          const apId = 'ap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-          db.prepare(`
-            INSERT INTO auction_players (id, auction_id, player_id, category_id, base_price, current_order, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?)
-          `).run(apId, reg.auction_id, reg.player_id, reg.category_id, assignedBasePrice, nextOrder, now);
+            const maxOrderRow = db.prepare('SELECT MAX(current_order) as maxOrder FROM auction_players WHERE auction_id = ?').get(reg.auction_id) as any;
+            const nextOrder = (maxOrderRow?.maxOrder || 0) + 1;
+
+            const apId = 'ap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            db.prepare(`
+              INSERT INTO auction_players (id, auction_id, player_id, category_id, base_price, current_order, status, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?)
+            `).run(apId, reg.auction_id, reg.player_id, reg.category_id, assignedBasePrice, nextOrder, now);
+          }
         }
       } else if (status === 'REJECTED' || status === 'SUSPENDED') {
         // If rejected, remove from pool if was pending

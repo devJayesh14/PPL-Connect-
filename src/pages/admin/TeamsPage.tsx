@@ -100,7 +100,7 @@ export const TeamsPage: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tournamentId: 'tour_default',
+          tournamentId: 'tour_ppl_2026',
           auctionId: 'auc_default',
           name: newTeamName.trim(),
           shortName: (newShortName || newTeamName.substring(0, 3)).toUpperCase().trim(),

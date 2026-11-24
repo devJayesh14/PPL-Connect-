@@ -71,21 +71,23 @@ class AuctionEngine {
   private initializeRoomState(auctionId: string): AuctionRoomState {
     const counts = db.prepare(`
       SELECT 
-        SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN status = 'SOLD' THEN 1 ELSE 0 END) as sold,
-        SUM(CASE WHEN status = 'UNSOLD' THEN 1 ELSE 0 END) as unsold,
-        SUM(CASE WHEN status = 'IN_AUCTION' THEN 1 ELSE 0 END) as inAuction
-      FROM auction_players 
-      WHERE auction_id = ?
+        SUM(CASE WHEN ap.status = 'PENDING' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN ap.status = 'SOLD' THEN 1 ELSE 0 END) as sold,
+        SUM(CASE WHEN ap.status = 'UNSOLD' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) THEN 1 ELSE 0 END) as unsold,
+        SUM(CASE WHEN ap.status = 'IN_AUCTION' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) THEN 1 ELSE 0 END) as inAuction
+      FROM auction_players ap
+      WHERE ap.auction_id = ?
     `).get(auctionId) as any;
 
-    // Check if there is already an active player in auction
+    // Check if there is already an active player in auction (excluding sold/retained)
     const activePlayerRow = db.prepare(`
       SELECT ap.*, p.full_name, p.photo, p.playing_role, p.batting_style, p.bowling_style, p.is_overseas, p.age, p.previous_team, p.experience, pc.name as category_name
       FROM auction_players ap
       JOIN players p ON ap.player_id = p.id
       LEFT JOIN player_categories pc ON ap.category_id = pc.id
       WHERE ap.auction_id = ? AND ap.status = 'IN_AUCTION'
+        AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
+        AND ap.player_id NOT IN (SELECT player_id FROM team_squads)
     `).get(auctionId) as any;
 
     let currentPlayer: LivePlayerState | null = null;
@@ -191,12 +193,25 @@ class AuctionEngine {
 
     let nextRow: any;
     if (specificPlayerId) {
+      // Guard: Player must NOT be already SOLD, RETAINED, or in a SQUAD
+      const isSoldOrRetained = db.prepare(`
+        SELECT 1 FROM auction_players WHERE auction_id = ? AND player_id = ? AND status = 'SOLD'
+        UNION
+        SELECT 1 FROM team_retentions WHERE player_id = ? AND status != 'REJECTED'
+        UNION
+        SELECT 1 FROM team_squads WHERE player_id = ?
+      `).get(auctionId, specificPlayerId, specificPlayerId, specificPlayerId);
+
+      if (isSoldOrRetained) {
+        return { success: false, message: 'This player is already sold or retained and cannot enter the auction.' };
+      }
+
       nextRow = db.prepare(`
         SELECT ap.*, p.full_name, p.photo, p.playing_role, p.batting_style, p.bowling_style, p.is_overseas, p.age, p.previous_team, p.experience, pc.name as category_name
         FROM auction_players ap
         JOIN players p ON ap.player_id = p.id
         LEFT JOIN player_categories pc ON ap.category_id = pc.id
-        WHERE ap.auction_id = ? AND ap.player_id = ?
+        WHERE ap.auction_id = ? AND ap.player_id = ? AND ap.status != 'SOLD'
       `).get(auctionId, specificPlayerId);
     } else {
       nextRow = db.prepare(`
@@ -204,15 +219,25 @@ class AuctionEngine {
         FROM auction_players ap
         JOIN players p ON ap.player_id = p.id
         LEFT JOIN player_categories pc ON ap.category_id = pc.id
-        WHERE ap.auction_id = ? AND (ap.status = 'PENDING' OR ap.status = 'IN_AUCTION')
+        WHERE ap.auction_id = ? 
+          AND (ap.status = 'PENDING' OR ap.status = 'IN_AUCTION')
+          AND ap.status != 'SOLD'
+          AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
+          AND ap.player_id NOT IN (SELECT player_id FROM team_squads)
         ORDER BY ap.current_order ASC, ap.created_at ASC
         LIMIT 1
       `).get(auctionId);
     }
 
     if (!nextRow) {
-      // Auto-enroll any registered players not yet in auction_players
-      const unseeded = db.prepare('SELECT p.* FROM players p WHERE p.id NOT IN (SELECT player_id FROM auction_players WHERE auction_id = ?)').all(auctionId) as any[];
+      // Auto-enroll any registered players not yet in auction_players, STRICTLY excluding retained and squad players
+      const unseeded = db.prepare(`
+        SELECT p.* FROM players p 
+        WHERE p.id NOT IN (SELECT player_id FROM auction_players WHERE auction_id = ?)
+          AND p.id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
+          AND p.id NOT IN (SELECT player_id FROM team_squads)
+      `).all(auctionId) as any[];
+
       if (unseeded.length > 0) {
         const now = new Date().toISOString();
         const maxOrderRow = db.prepare('SELECT MAX(current_order) as maxOrder FROM auction_players WHERE auction_id = ?').get(auctionId) as any;
@@ -223,13 +248,16 @@ class AuctionEngine {
             VALUES (?, ?, ?, NULL, ?, ?, 'PENDING', ?)
           `).run('ap_' + p.id + '_' + Date.now().toString(36), auctionId, p.id, config.default_base_price || 500, nextOrder++, now);
         }
-        // Re-query
+        // Re-query with strict exclusion
         nextRow = db.prepare(`
           SELECT ap.*, p.full_name, p.photo, p.playing_role, p.batting_style, p.bowling_style, p.is_overseas, p.age, p.previous_team, p.experience, pc.name as category_name
           FROM auction_players ap
           JOIN players p ON ap.player_id = p.id
           LEFT JOIN player_categories pc ON ap.category_id = pc.id
-          WHERE ap.auction_id = ? AND ap.status = 'PENDING'
+          WHERE ap.auction_id = ? 
+            AND ap.status = 'PENDING'
+            AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
+            AND ap.player_id NOT IN (SELECT player_id FROM team_squads)
           ORDER BY ap.current_order ASC, ap.created_at ASC
           LIMIT 1
         `).get(auctionId);
@@ -538,6 +566,19 @@ class AuctionEngine {
   public reauctionPlayer(auctionId: string, playerId: string): { success: boolean; message?: string } {
     const ap = db.prepare('SELECT * FROM auction_players WHERE auction_id = ? AND player_id = ?').get(auctionId, playerId) as any;
     if (!ap) return { success: false, message: 'Player not found in auction pool' };
+
+    // STRICT CHECK: Sold and retained players can NEVER be re-auctioned
+    if (ap.status === 'SOLD') {
+      return { success: false, message: 'This player is already SOLD and cannot be re-auctioned.' };
+    }
+    const isRetained = db.prepare('SELECT 1 FROM team_retentions WHERE player_id = ? AND status != "REJECTED"').get(playerId);
+    if (isRetained) {
+      return { success: false, message: 'This player is retained by a franchise team and cannot be re-auctioned.' };
+    }
+    const inSquad = db.prepare('SELECT 1 FROM team_squads WHERE player_id = ?').get(playerId);
+    if (inSquad) {
+      return { success: false, message: 'This player is already a member of a team squad and cannot be re-auctioned.' };
+    }
 
     const config = db.prepare('SELECT max_reauction_attempts FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
     const maxAttempts = config?.max_reauction_attempts || 2;
