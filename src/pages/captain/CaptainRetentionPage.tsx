@@ -305,7 +305,7 @@ export const CaptainRetentionPage: React.FC = () => {
                   The player must click the confirmation link in their email to accept. Once confirmed, this slot will show as Confirmed.
                 </p>
                 {currentRetention.confirmation_token && (
-                  <div className="pt-1 flex items-center gap-2">
+                  <div className="pt-1 flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -315,6 +315,14 @@ export const CaptainRetentionPage: React.FC = () => {
                     >
                       {copiedToken ? 'Link Copied!' : 'Copy Direct Confirmation Link'}
                     </Button>
+                    <a
+                      href={`https://wa.me/${currentRetention.mobile ? (currentRetention.mobile.startsWith('+91') || currentRetention.mobile.startsWith('91') ? currentRetention.mobile.replace(/[^0-9]/g, '') : '91' + currentRetention.mobile.replace(/[^0-9]/g, '')) : ''}?text=${encodeURIComponent(`Hello ${currentRetention.full_name}, franchise team ${team?.name || 'Mahakal XI'} has selected you for their Official Franchise Retention slot for PPL 2026! Please confirm your retention here: ${window.location.origin}/confirm-retention/${currentRetention.confirmation_token}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+                    >
+                      <span>Share on WhatsApp</span>
+                    </a>
                   </div>
                 )}
               </div>

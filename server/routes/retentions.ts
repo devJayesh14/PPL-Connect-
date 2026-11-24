@@ -127,7 +127,7 @@ router.post('/confirm/:token', (req, res) => {
       // DECLINE: mark REJECTED and remove from team_retentions so team can retain someone else
       const declineTx = db.transaction(() => {
         db.prepare("UPDATE team_retentions SET status = 'REJECTED' WHERE id = ?").run(retention.id);
-        db.prepare('DELETE FROM team_squads WHERE team_id = ? AND player_id = ? AND acquisition_type = "RETENTION"').run(retention.team_id, retention.player_id);
+        db.prepare("DELETE FROM team_squads WHERE team_id = ? AND player_id = ? AND acquisition_type = 'RETENTION'").run(retention.team_id, retention.player_id);
       });
       declineTx();
       return res.json({
@@ -343,7 +343,7 @@ router.delete('/:id', (req, res) => {
 
     const releaseTx = db.transaction(() => {
       db.prepare('DELETE FROM team_retentions WHERE id = ?').run(retention.id);
-      db.prepare('DELETE FROM team_squads WHERE team_id = ? AND player_id = ? AND acquisition_type = "RETENTION"').run(retention.team_id, retention.player_id);
+      db.prepare("DELETE FROM team_squads WHERE team_id = ? AND player_id = ? AND acquisition_type = 'RETENTION'").run(retention.team_id, retention.player_id);
 
       // Restore to auction pool if was pending
       if (retention.auction_id) {

@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: SQL string literal quoting in teams query and reauction player check',
+      message: 'fix: fix release retention SQL quoting, confirm retention route token loading, and email fast fallback with WhatsApp share',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

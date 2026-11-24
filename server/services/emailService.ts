@@ -28,18 +28,18 @@ export async function sendRetentionConfirmationEmail({
           pass: process.env.SMTP_PASS,
         },
       });
-    } else {
-      // Create ethereal test account for dev/preview if no SMTP configured
-      const testAccount = await nodemailer.createTestAccount();
+    } else if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
       transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
+        service: 'gmail',
         auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD,
         },
       });
+    } else {
+      // Fast fallback when no SMTP credentials are configured (avoids slow network timeouts)
+      console.log(`[EMAIL NOTICE] No SMTP credentials configured. Direct confirmation link ready: ${confirmationUrl}`);
+      return { success: true, previewUrl: confirmationUrl };
     }
 
     const htmlContent = `

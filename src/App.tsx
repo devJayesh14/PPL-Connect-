@@ -93,7 +93,11 @@ const AppContent: React.FC = () => {
   if (currentPath.startsWith('/confirm-retention')) {
     return (
       <Suspense fallback={<PageLoadingFallback />}>
-        <ConfirmRetentionPage />
+        <Routes>
+          <Route path="/confirm-retention/:token" element={<ConfirmRetentionPage />} />
+          <Route path="/confirm-retention" element={<ConfirmRetentionPage />} />
+          <Route path="*" element={<ConfirmRetentionPage />} />
+        </Routes>
       </Suspense>
     );
   }

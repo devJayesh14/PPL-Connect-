@@ -6,14 +6,27 @@ import { Badge } from '../../components/common/Badge';
 import { CheckCircle2, XCircle, Shield, User, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const ConfirmRetentionPage: React.FC = () => {
-  const { token } = useParams<{ token: string }>();
+  const params = useParams<{ token?: string }>();
+  // Extract token from router params OR directly from window.location.pathname
+  const token =
+    params.token ||
+    (typeof window !== 'undefined'
+      ? window.location.pathname.split('/confirm-retention/')[1]?.split('/')[0]?.split('?')[0] || ''
+      : '');
+
   const [retention, setRetention] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [resultMsg, setResultMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setResultMsg({ type: 'error', message: 'No confirmation token provided in link.' });
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     fetch(`/api/retentions/confirm/${token}`)
       .then((res) => {
         if (!res.ok) throw new Error('Retention offer not found or link has expired.');
