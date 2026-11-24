@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: add public player registration self-check by mobile or email with direct registration link',
+      message: 'feat: add photo image change options for admin in player list and edit modal with auto-compression',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

@@ -21,6 +21,7 @@ import {
   Filter,
   Upload,
   X,
+  Camera,
 } from 'lucide-react';
 
 export const PlayersPage: React.FC = () => {
@@ -114,8 +115,123 @@ export const PlayersPage: React.FC = () => {
   const [editCategory, setEditCategory] = useState('Batsman');
   const [editBasePrice, setEditBasePrice] = useState('500');
   const [editPhoto, setEditPhoto] = useState('');
+  const [editPhotoFileName, setEditPhotoFileName] = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick photo update from list
+  const quickPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [quickPhotoTargetPlayer, setQuickPhotoTargetPlayer] = useState<any>(null);
+
+  const handleEditImageFile = (file: File) => {
+    const MAX_SIZE_BYTES = 20 * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      setEditError('Image size exceeds 20MB limit. Please choose a smaller photo.');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setEditError('Please select a valid image file (JPEG, PNG, WEBP).');
+      return;
+    }
+    setEditError(null);
+    setEditPhotoFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 400;
+        let width = img.width;
+        let height = img.height;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+          setEditPhoto(compressed);
+        } else {
+          setEditPhoto(reader.result as string);
+        }
+      };
+      img.onerror = () => setEditPhoto(reader.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerQuickPhoto = (player: any) => {
+    setQuickPhotoTargetPlayer(player);
+    if (quickPhotoInputRef.current) {
+      quickPhotoInputRef.current.value = '';
+      quickPhotoInputRef.current.click();
+    }
+  };
+
+  const handleQuickPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !quickPhotoTargetPlayer) return;
+
+    const targetId = quickPhotoTargetPlayer.id || quickPhotoTargetPlayer.player_id;
+    const playerName = quickPhotoTargetPlayer.full_name;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 400;
+        let width = img.width;
+        let height = img.height;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const compressed = ctx ? canvas.toDataURL('image/jpeg', 0.8) : (reader.result as string);
+
+        try {
+          setActionLoadingId(targetId);
+          const res = await fetch(`/api/players/${targetId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photo: compressed }),
+          });
+          if (!res.ok) throw new Error('Failed to update photo');
+
+          setPlayers((prev) =>
+            prev.map((p) =>
+              (p.id === targetId || p.player_id === targetId) ? { ...p, photo: compressed } : p
+            )
+          );
+          setActionFeedback({ type: 'success', message: `Photo updated successfully for ${playerName}!` });
+          setTimeout(() => setActionFeedback(null), 3500);
+        } catch (err: any) {
+          setActionFeedback({ type: 'error', message: err.message || 'Error updating photo' });
+          setTimeout(() => setActionFeedback(null), 3500);
+        } finally {
+          setActionLoadingId(null);
+          setQuickPhotoTargetPlayer(null);
+        }
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const fetchPlayers = async (page = currentPage, limit = pageSize) => {
     try {
@@ -261,6 +377,7 @@ export const PlayersPage: React.FC = () => {
     setEditEmail(player.email || '');
     setEditMobile(player.mobile || '');
     setEditPhoto(player.photo || '');
+    setEditPhotoFileName('');
     setEditBasePrice(String(player.base_price || 500));
     setEditCategory(
       player.playing_role === 'BOWLER'
@@ -382,6 +499,14 @@ export const PlayersPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Hidden Quick Photo Picker */}
+      <input
+        type="file"
+        ref={quickPhotoInputRef}
+        accept="image/*"
+        onChange={handleQuickPhotoChange}
+        className="hidden"
+      />
       {/* Top Header & 2 Primary Options */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
@@ -583,14 +708,23 @@ export const PlayersPage: React.FC = () => {
                 <div key={p.id || p.player_id} className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                        {p.photo ? (
-                          <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-blue-50 text-blue-600">
-                            {p.full_name ? p.full_name.charAt(0) : 'P'}
-                          </div>
-                        )}
+                      <div
+                        onClick={() => triggerQuickPhoto(p)}
+                        className="relative group cursor-pointer shrink-0"
+                        title="Click to change player photo"
+                      >
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 group-hover:border-blue-500 transition-colors">
+                          {p.photo ? (
+                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-blue-50 text-blue-600">
+                              {p.full_name ? p.full_name.charAt(0) : 'P'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                          <Camera className="w-4 h-4" />
+                        </div>
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-slate-900 text-sm truncate">{p.full_name}</div>
@@ -689,6 +823,16 @@ export const PlayersPage: React.FC = () => {
                       <Button
                         size="sm"
                         variant="secondary"
+                        className="text-xs py-1 px-2 h-8 border-slate-200 text-slate-700 hover:text-emerald-700"
+                        onClick={() => triggerQuickPhoto(p)}
+                        icon={<Camera className="w-3.5 h-3.5 text-emerald-600" />}
+                        title="Change Photo"
+                      >
+                        Photo
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         className="text-xs py-1 px-2 h-8 border-slate-200"
                         onClick={() => openEdit(p)}
                         icon={<Edit2 className="w-3.5 h-3.5" />}
@@ -770,14 +914,23 @@ export const PlayersPage: React.FC = () => {
 
                       <td className="px-6 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                            {p.photo ? (
-                              <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-blue-50 text-blue-600">
-                                {p.full_name ? p.full_name.charAt(0) : 'P'}
-                              </div>
-                            )}
+                          <div
+                            onClick={() => triggerQuickPhoto(p)}
+                            className="relative group cursor-pointer shrink-0"
+                            title="Click to change player photo"
+                          >
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 group-hover:border-blue-500 transition-colors">
+                              {p.photo ? (
+                                <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-blue-50 text-blue-600">
+                                  {p.full_name ? p.full_name.charAt(0) : 'P'}
+                                </div>
+                              )}
+                            </div>
+                            <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                              <Camera className="w-3.5 h-3.5" />
+                            </div>
                           </div>
                           <div>
                             <div className="font-bold text-slate-900">{p.full_name}</div>
@@ -889,9 +1042,16 @@ export const PlayersPage: React.FC = () => {
                           )}
 
                           <button
+                            onClick={() => triggerQuickPhoto(p)}
+                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Change Player Photo"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => openEdit(p)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit Player"
+                            title="Edit Player Details"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -1225,6 +1385,74 @@ export const PlayersPage: React.FC = () => {
                 <span>{editError}</span>
               </div>
             )}
+
+            {/* Player Photo Upload & Preview */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Player Photo
+              </label>
+              <input
+                type="file"
+                ref={editFileInputRef}
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleEditImageFile(file);
+                }}
+                className="hidden"
+              />
+              <div className="flex items-center gap-3.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="w-14 h-14 rounded-full overflow-hidden bg-white border-2 border-slate-300 shrink-0 relative group">
+                  {editPhoto ? (
+                    <img src={editPhoto} alt="Player" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100">
+                      <User className="w-6 h-6 text-slate-400" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => editFileInputRef.current?.click()}
+                      icon={<Upload className="w-3.5 h-3.5 text-blue-600" />}
+                      className="text-xs py-1 px-2.5 bg-white border-slate-300"
+                    >
+                      {editPhoto ? 'Change Photo' : 'Upload Photo'}
+                    </Button>
+
+                    {editPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditPhoto('');
+                          setEditPhotoFileName('');
+                          if (editFileInputRef.current) editFileInputRef.current.value = '';
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                        title="Remove Photo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-slate-500">
+                    {editPhotoFileName ? (
+                      <span className="text-blue-700 font-medium truncate block max-w-[200px]">
+                        ✓ {editPhotoFileName}
+                      </span>
+                    ) : (
+                      'Click to replace or upload player photo (Max 20MB)'
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
