@@ -242,7 +242,48 @@ export function initDatabase() {
       WHERE tournament_id IS NULL OR auction_id IS NULL OR tournament_id = '' OR auction_id = ''
     `).run();
 
-    // 3. Auto-link captains to teams and approve pending captains
+    // 3. Captain migrations & Auto-link captains
+    const capCols = activeDb.prepare("PRAGMA table_info(captains)").all() as any[];
+    if (!capCols.some((c) => c.name === 'player_id')) {
+      activeDb.prepare("ALTER TABLE captains ADD COLUMN player_id TEXT").run();
+    }
+
+    // Link captains to matching players if player_id is not yet populated
+    activeDb.prepare(`
+      UPDATE captains
+      SET player_id = (
+        SELECT id FROM players
+        WHERE LOWER(players.email) = LOWER(captains.email)
+           OR (players.mobile != '' AND players.mobile = captains.mobile)
+           OR LOWER(players.full_name) = LOWER(captains.name)
+        LIMIT 1
+      )
+      WHERE player_id IS NULL
+    `).run();
+
+    // Auto-create captain rows for any users with role='CAPTAIN' missing from captains table
+    const unlinkedCapUsers = activeDb.prepare(`
+      SELECT u.* FROM users u 
+      WHERE u.role = 'CAPTAIN' 
+        AND NOT EXISTS (SELECT 1 FROM captains c WHERE LOWER(c.email) = LOWER(u.email) OR c.user_id = u.id)
+    `).all() as any[];
+
+    for (const u of unlinkedCapUsers) {
+      const capId = 'cap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      let teamId = u.team_id;
+      if (!teamId) {
+        const anyTeam = activeDb.prepare('SELECT id FROM teams WHERE captain_id IS NULL LIMIT 1').get() as any;
+        teamId = anyTeam?.id || null;
+      }
+      if (teamId) {
+        activeDb.prepare(`
+          INSERT INTO captains (id, user_id, team_id, auction_id, name, mobile, email, status, created_at)
+          VALUES (?, ?, ?, 'auc_default', ?, ?, ?, 'APPROVED', ?)
+        `).run(capId, u.id, teamId, u.name, u.mobile || '', u.email, nowTime);
+        activeDb.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(capId, teamId);
+      }
+    }
+
     activeDb.prepare(`
       UPDATE teams 
       SET captain_id = (SELECT id FROM captains WHERE team_id = teams.id LIMIT 1)
@@ -261,12 +302,22 @@ export function initDatabase() {
       WHERE role = 'CAPTAIN' AND (status = 'PENDING' OR status IS NULL)
     `).run();
 
-    // 4. Remove any retained/squad players from pending auction pool
+    // 4. Remove retained, squad, and captain players from pending auction pool
     activeDb.prepare(`
       DELETE FROM auction_players 
       WHERE (
         player_id IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
         OR player_id IN (SELECT player_id FROM team_squads)
+        OR player_id IN (
+          SELECT p.id FROM players p
+          JOIN captains c ON (
+            c.player_id = p.id
+            OR (c.email != '' AND LOWER(c.email) = LOWER(p.email))
+            OR (c.mobile != '' AND c.mobile = p.mobile)
+            OR LOWER(c.name) = LOWER(p.full_name)
+          )
+          WHERE c.status != 'REJECTED'
+        )
       ) AND status = 'PENDING'
     `).run();
   } catch (e) {

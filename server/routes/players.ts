@@ -352,6 +352,7 @@ router.get('/pool/:auctionId', (req, res) => {
       if (status === 'PENDING') {
         query += ` AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')`;
         query += ` AND ap.player_id NOT IN (SELECT player_id FROM team_squads)`;
+        query += ` AND ap.player_id NOT IN (SELECT p2.id FROM players p2 JOIN captains c ON (c.player_id = p2.id OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email)) OR (c.mobile != '' AND c.mobile = p2.mobile) OR LOWER(c.name) = LOWER(p2.full_name)) WHERE c.status != 'REJECTED')`;
       }
     }
     if (search) {
@@ -558,11 +559,21 @@ router.post('/sync-all-to-pool/:auctionId', (req, res) => {
     const config = db.prepare('SELECT default_base_price FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
     const defaultBasePrice = config?.default_base_price || 500;
 
-    // STRICT: Only sync players who are NOT retained and NOT in any squad
+    // STRICT: Only sync players who are NOT retained, NOT in any squad, and NOT appointed as captains
     const allPlayers = db.prepare(`
       SELECT p.* FROM players p
       WHERE p.id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
         AND p.id NOT IN (SELECT player_id FROM team_squads)
+        AND p.id NOT IN (
+          SELECT p2.id FROM players p2 
+          JOIN captains c ON (
+            c.player_id = p2.id 
+            OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email)) 
+            OR (c.mobile != '' AND c.mobile = p2.mobile) 
+            OR LOWER(c.name) = LOWER(p2.full_name)
+          ) 
+          WHERE c.status != 'REJECTED'
+        )
     `).all() as any[];
     const now = new Date().toISOString();
 

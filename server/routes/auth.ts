@@ -120,11 +120,51 @@ router.post('/login', (req, res) => {
 // GET all captains (with approval status)
 router.get('/captains', (req, res) => {
   try {
+    // 1. Auto-sync any users with role='CAPTAIN' who are missing from captains table
+    try {
+      const nowTime = new Date().toISOString();
+      const unlinkedCapUsers = db.prepare(`
+        SELECT u.* FROM users u 
+        WHERE u.role = 'CAPTAIN' 
+          AND NOT EXISTS (SELECT 1 FROM captains c WHERE LOWER(c.email) = LOWER(u.email) OR c.user_id = u.id)
+      `).all() as any[];
+
+      for (const u of unlinkedCapUsers) {
+        const capId = 'cap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        let teamId = u.team_id;
+        if (!teamId) {
+          const anyTeam = db.prepare('SELECT id FROM teams WHERE captain_id IS NULL LIMIT 1').get() as any;
+          teamId = anyTeam?.id || null;
+        }
+        if (teamId) {
+          db.prepare(`
+            INSERT INTO captains (id, user_id, team_id, auction_id, name, mobile, email, status, created_at)
+            VALUES (?, ?, ?, 'auc_default', ?, ?, ?, 'APPROVED', ?)
+          `).run(capId, u.id, teamId, u.name, u.mobile || '', u.email, nowTime);
+          db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(capId, teamId);
+        }
+      }
+    } catch (e) {}
+
     const captains = db.prepare(`
-      SELECT c.*, t.name as team_name, t.logo as team_logo, t.remaining_purse, a.name as auction_name
+      SELECT c.*, 
+        COALESCE(t.name, t_fallback.name, 'Franchise Team') as team_name, 
+        COALESCE(t.short_name, t_fallback.short_name, 'FRN') as team_short_name,
+        COALESCE(t.logo, t_fallback.logo, '') as team_logo, 
+        COALESCE(t.color, t_fallback.color, '#2563EB') as team_color,
+        COALESCE(t.remaining_purse, t_fallback.remaining_purse, 20000) as remaining_purse, 
+        a.name as auction_name,
+        p.photo as player_photo,
+        p.playing_role as player_role
       FROM captains c
       LEFT JOIN teams t ON c.team_id = t.id
+      LEFT JOIN teams t_fallback ON t_fallback.captain_id = c.id
       LEFT JOIN auctions a ON c.auction_id = a.id
+      LEFT JOIN players p ON (
+        c.player_id = p.id 
+        OR (c.email != '' AND LOWER(c.email) = LOWER(p.email))
+        OR (c.mobile != '' AND c.mobile = p.mobile)
+      )
       ORDER BY c.created_at DESC
     `).all();
     res.json(captains);
@@ -331,6 +371,15 @@ router.post('/assign-captain', (req, res) => {
     if (playerId) {
       player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId) as any;
     }
+    if (!player && email) {
+      player = db.prepare('SELECT * FROM players WHERE LOWER(email) = ?').get(email.trim().toLowerCase()) as any;
+    }
+    if (!player && mobile) {
+      player = db.prepare('SELECT * FROM players WHERE mobile = ?').get(mobile.trim()) as any;
+    }
+    if (!player && captainName) {
+      player = db.prepare('SELECT * FROM players WHERE LOWER(full_name) = ?').get(captainName.trim().toLowerCase()) as any;
+    }
 
     const assignedName = captainName || player?.full_name || 'Team Captain';
     const assignedEmail = email || player?.email || `${team.short_name.toLowerCase()}@team.com`;
@@ -354,11 +403,24 @@ router.post('/assign-captain', (req, res) => {
       // Check existing captain for this team or create new
       const capId = 'cap_' + Date.now();
       db.prepare(`
-        INSERT INTO captains (id, user_id, team_id, auction_id, name, mobile, email, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?)
-      `).run(capId, userId, teamId, targetAuc, assignedName, assignedMobile, assignedEmail, now);
+        INSERT INTO captains (id, user_id, team_id, auction_id, name, mobile, email, status, player_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?)
+      `).run(capId, userId, teamId, targetAuc, assignedName, assignedMobile, assignedEmail, player?.id || null, now);
 
       db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(capId, teamId);
+
+      // CRITICAL: If a registered player is assigned as captain, remove them from auction pool and add to squad
+      if (player) {
+        db.prepare('DELETE FROM auction_players WHERE player_id = ?').run(player.id);
+
+        const squadId = 'sq_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        const tourId = team.tournament_id || 'tour_ppl_2026';
+        const aucId = targetAuc || 'auc_default';
+        db.prepare(`
+          INSERT OR REPLACE INTO team_squads (id, tournament_id, auction_id, team_id, player_id, acquisition_type, price, joined_at)
+          VALUES (?, ?, ?, ?, ?, 'RETENTION', 0, ?)
+        `).run(squadId, tourId, aucId, team.id, player.id, now);
+      }
 
       // Audit log
       if (targetAuc) {

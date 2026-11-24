@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: resolve auction_id safely in adjust-purse to prevent NOT NULL constraint error',
+      message: 'feat: add captains list access for all roles, link captains to players and exclude captained players from auction pool',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

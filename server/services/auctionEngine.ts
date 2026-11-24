@@ -71,15 +71,15 @@ class AuctionEngine {
   private initializeRoomState(auctionId: string): AuctionRoomState {
     const counts = db.prepare(`
       SELECT 
-        SUM(CASE WHEN ap.status = 'PENDING' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN ap.status = 'PENDING' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) AND ap.player_id NOT IN (SELECT p2.id FROM players p2 JOIN captains c ON (c.player_id = p2.id OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email)) OR (c.mobile != '' AND c.mobile = p2.mobile) OR LOWER(c.name) = LOWER(p2.full_name)) WHERE c.status != 'REJECTED') THEN 1 ELSE 0 END) as pending,
         SUM(CASE WHEN ap.status = 'SOLD' THEN 1 ELSE 0 END) as sold,
-        SUM(CASE WHEN ap.status = 'UNSOLD' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) THEN 1 ELSE 0 END) as unsold,
-        SUM(CASE WHEN ap.status = 'IN_AUCTION' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) THEN 1 ELSE 0 END) as inAuction
+        SUM(CASE WHEN ap.status = 'UNSOLD' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) AND ap.player_id NOT IN (SELECT p2.id FROM players p2 JOIN captains c ON (c.player_id = p2.id OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email)) OR (c.mobile != '' AND c.mobile = p2.mobile) OR LOWER(c.name) = LOWER(p2.full_name)) WHERE c.status != 'REJECTED') THEN 1 ELSE 0 END) as unsold,
+        SUM(CASE WHEN ap.status = 'IN_AUCTION' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) AND ap.player_id NOT IN (SELECT p2.id FROM players p2 JOIN captains c ON (c.player_id = p2.id OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email)) OR (c.mobile != '' AND c.mobile = p2.mobile) OR LOWER(c.name) = LOWER(p2.full_name)) WHERE c.status != 'REJECTED') THEN 1 ELSE 0 END) as inAuction
       FROM auction_players ap
       WHERE ap.auction_id = ?
     `).get(auctionId) as any;
 
-    // Check if there is already an active player in auction (excluding sold/retained)
+    // Check if there is already an active player in auction (excluding sold/retained/captains)
     const activePlayerRow = db.prepare(`
       SELECT ap.*, p.full_name, p.photo, p.playing_role, p.batting_style, p.bowling_style, p.is_overseas, p.age, p.previous_team, p.experience, pc.name as category_name
       FROM auction_players ap
@@ -88,6 +88,16 @@ class AuctionEngine {
       WHERE ap.auction_id = ? AND ap.status = 'IN_AUCTION'
         AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
         AND ap.player_id NOT IN (SELECT player_id FROM team_squads)
+        AND ap.player_id NOT IN (
+          SELECT p2.id FROM players p2
+          JOIN captains c ON (
+            c.player_id = p2.id
+            OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email))
+            OR (c.mobile != '' AND c.mobile = p2.mobile)
+            OR LOWER(c.name) = LOWER(p2.full_name)
+          )
+          WHERE c.status != 'REJECTED'
+        )
     `).get(auctionId) as any;
 
     let currentPlayer: LivePlayerState | null = null;
@@ -224,18 +234,38 @@ class AuctionEngine {
           AND ap.status != 'SOLD'
           AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
           AND ap.player_id NOT IN (SELECT player_id FROM team_squads)
+          AND ap.player_id NOT IN (
+            SELECT p2.id FROM players p2
+            JOIN captains c ON (
+              c.player_id = p2.id
+              OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email))
+              OR (c.mobile != '' AND c.mobile = p2.mobile)
+              OR LOWER(c.name) = LOWER(p2.full_name)
+            )
+            WHERE c.status != 'REJECTED'
+          )
         ORDER BY ap.current_order ASC, ap.created_at ASC
         LIMIT 1
       `).get(auctionId);
     }
 
     if (!nextRow) {
-      // Auto-enroll any registered players not yet in auction_players, STRICTLY excluding retained and squad players
+      // Auto-enroll any registered players not yet in auction_players, STRICTLY excluding retained, squad, and captain players
       const unseeded = db.prepare(`
         SELECT p.* FROM players p 
         WHERE p.id NOT IN (SELECT player_id FROM auction_players WHERE auction_id = ?)
           AND p.id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
           AND p.id NOT IN (SELECT player_id FROM team_squads)
+          AND p.id NOT IN (
+            SELECT p2.id FROM players p2
+            JOIN captains c ON (
+              c.player_id = p2.id
+              OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email))
+              OR (c.mobile != '' AND c.mobile = p2.mobile)
+              OR LOWER(c.name) = LOWER(p2.full_name)
+            )
+            WHERE c.status != 'REJECTED'
+          )
       `).all(auctionId) as any[];
 
       if (unseeded.length > 0) {
@@ -258,6 +288,16 @@ class AuctionEngine {
             AND ap.status = 'PENDING'
             AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED')
             AND ap.player_id NOT IN (SELECT player_id FROM team_squads)
+            AND ap.player_id NOT IN (
+              SELECT p2.id FROM players p2
+              JOIN captains c ON (
+                c.player_id = p2.id
+                OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email))
+                OR (c.mobile != '' AND c.mobile = p2.mobile)
+                OR LOWER(c.name) = LOWER(p2.full_name)
+              )
+              WHERE c.status != 'REJECTED'
+            )
           ORDER BY ap.current_order ASC, ap.created_at ASC
           LIMIT 1
         `).get(auctionId);

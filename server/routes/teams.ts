@@ -235,6 +235,15 @@ router.post('/:id/assign-captain', (req, res) => {
     if (playerId) {
       player = db.prepare('SELECT * FROM players WHERE id = ?').get(playerId) as any;
     }
+    if (!player && email) {
+      player = db.prepare('SELECT * FROM players WHERE LOWER(email) = ?').get(email.trim().toLowerCase()) as any;
+    }
+    if (!player && mobile) {
+      player = db.prepare('SELECT * FROM players WHERE mobile = ?').get(mobile.trim()) as any;
+    }
+    if (!player && captainName) {
+      player = db.prepare('SELECT * FROM players WHERE LOWER(full_name) = ?').get(captainName.trim().toLowerCase()) as any;
+    }
 
     const assignedName = captainName || player?.full_name || 'Team Captain';
     const assignedEmail = (email || player?.email || `${team.short_name.toLowerCase()}@team.com`).trim().toLowerCase();
@@ -255,15 +264,28 @@ router.post('/:id/assign-captain', (req, res) => {
         db.prepare("UPDATE users SET role = 'CAPTAIN', team_id = ? WHERE id = ?").run(team.id, user.id);
       }
 
-      // 2. Insert or update captain record
+      // 2. Insert or update captain record with player_id
       const capId = 'cap_' + Date.now();
       db.prepare(`
-        INSERT INTO captains (id, user_id, team_id, auction_id, name, mobile, email, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?)
-      `).run(capId, userId, team.id, targetAuc, assignedName, assignedMobile, assignedEmail, now);
+        INSERT INTO captains (id, user_id, team_id, auction_id, name, mobile, email, status, player_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?)
+      `).run(capId, userId, team.id, targetAuc, assignedName, assignedMobile, assignedEmail, player?.id || null, now);
 
       // 3. Update team captain_id
       db.prepare('UPDATE teams SET captain_id = ? WHERE id = ?').run(capId, team.id);
+
+      // CRITICAL: If assigned as captain, remove player from auction pool and add to squad
+      if (player) {
+        db.prepare('DELETE FROM auction_players WHERE player_id = ?').run(player.id);
+
+        const squadId = 'sq_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        const tourId = team.tournament_id || 'tour_ppl_2026';
+        const aucId = targetAuc || 'auc_default';
+        db.prepare(`
+          INSERT OR REPLACE INTO team_squads (id, tournament_id, auction_id, team_id, player_id, acquisition_type, price, joined_at)
+          VALUES (?, ?, ?, ?, ?, 'RETENTION', 0, ?)
+        `).run(squadId, tourId, aucId, team.id, player.id, now);
+      }
 
       // 4. Log in audit trail
       if (targetAuc) {

@@ -150,13 +150,13 @@ const AppContent: React.FC = () => {
               {/* Shareable Players Pool (Accessible to all logged in users) */}
               <Route path="/players-list" element={<PublicPlayersListPage />} />
               <Route path="/players-pool" element={<PublicPlayersListPage />} />
+              <Route path="/captains" element={<CaptainsPage />} />
 
               {/* Admin Management (Strictly accessible ONLY when logged in as ADMIN) */}
               <Route path="/tournaments" element={role === 'ADMIN' ? <TournamentsPage /> : <Navigate to="/" replace />} />
               <Route path="/auctions" element={role === 'ADMIN' ? <AuctionsListPage /> : <Navigate to="/" replace />} />
               <Route path="/auctions/create" element={role === 'ADMIN' ? <CreateAuctionWizard /> : <Navigate to="/" replace />} />
               <Route path="/teams" element={role === 'ADMIN' ? <TeamsPage /> : <Navigate to="/" replace />} />
-              <Route path="/captains" element={role === 'ADMIN' ? <CaptainsPage /> : <Navigate to="/" replace />} />
               <Route path="/players" element={role === 'ADMIN' ? <PlayersPage /> : <Navigate to="/" replace />} />
               <Route path="/auction-pool" element={role === 'ADMIN' ? <AuctionPoolPage /> : <Navigate to="/" replace />} />
               <Route path="/retentions" element={role === 'ADMIN' ? <RetentionsPage /> : <Navigate to="/" replace />} />

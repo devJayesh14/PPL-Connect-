@@ -3,9 +3,13 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
-import { Award, CheckCircle2, XCircle, Shield, Phone, Mail, UserPlus, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { Award, CheckCircle2, XCircle, Shield, Phone, Mail, UserPlus, AlertCircle, RefreshCw } from 'lucide-react';
 
 export const CaptainsPage: React.FC = () => {
+  const { role } = useAuth();
+  const isAdmin = role === 'ADMIN';
+
   const [captains, setCaptains] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [players, setPlayers] = useState<any[]>([]);
@@ -118,24 +122,40 @@ export const CaptainsPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Captain Approvals & Team Leadership
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Award className="w-6 h-6 text-indigo-600" />
+            <span>{isAdmin ? 'Captain Approvals & Team Leadership' : 'Franchise Team Captains'}</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Super Admin decides which player or leader is assigned as Captain. Captain requests require Super Admin confirmation before accessing bidding.
+            {isAdmin 
+              ? 'Super Admin manages franchise captains. Appointed captains are automatically excluded from the auction pool.'
+              : 'Official appointed team captains leading franchise squads in Priyanka Premiere League (PPL 2026).'}
           </p>
         </div>
 
-        <Button
-          size="sm"
-          onClick={() => {
-            if (teams.length > 0) setSelectedTeamId(teams[0].id);
-            setAssignModal(true);
-          }}
-          icon={<UserPlus className="w-4 h-4" />}
-        >
-          Assign Team Captain
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={fetchData}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
+          >
+            Refresh
+          </Button>
+
+          {isAdmin && (
+            <Button
+              size="sm"
+              onClick={() => {
+                if (teams.length > 0) setSelectedTeamId(teams[0].id);
+                setAssignModal(true);
+              }}
+              icon={<UserPlus className="w-4 h-4" />}
+            >
+              Assign Team Captain
+            </Button>
+          )}
+        </div>
       </div>
 
       {actionMessage && (
@@ -151,23 +171,40 @@ export const CaptainsPage: React.FC = () => {
           <Award className="w-10 h-10 text-slate-400 mx-auto mb-2 opacity-50" />
           <h3 className="text-sm font-bold text-slate-800">No Captains Assigned Yet</h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-            Click "Assign Team Captain" above to choose any registered player or candidate and promote them to franchise captain.
+            {isAdmin 
+              ? 'Click "Assign Team Captain" above to choose any registered player or candidate and promote them to franchise captain.'
+              : 'Team captains will appear here once appointed by tournament administration.'}
           </p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {captains.map((cap) => (
-            <Card key={cap.id} noPadding className="hover:border-blue-300 transition-all">
+            <Card key={cap.id} noPadding className="hover:border-blue-300 transition-all shadow-xs border border-slate-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs border border-blue-200">
-                    {cap.name.charAt(0)}
-                  </div>
+                <div className="flex items-center gap-3">
+                  {cap.player_photo ? (
+                    <img
+                      src={cap.player_photo}
+                      alt={cap.name}
+                      className="w-11 h-11 rounded-full object-cover border-2 border-indigo-200 shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                      {cap.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">{cap.name}</h3>
-                    <span className="text-[11px] font-semibold text-blue-700">
-                      {cap.team_name || 'Team Leader'}
-                    </span>
+                    <h3 className="text-sm font-bold text-slate-900 leading-tight">{cap.name}</h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                        {cap.team_name || 'Franchise Leader'}
+                      </span>
+                      {cap.player_role && (
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          • {cap.player_role}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -182,56 +219,75 @@ export const CaptainsPage: React.FC = () => {
               <div className="p-5 space-y-3 text-xs">
                 <div className="space-y-1.5 text-slate-600">
                   <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{cap.email}</span>
+                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">{cap.email}</span>
                   </div>
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{cap.mobile || '—'}</span>
+                    </div>
+                  ) : cap.mobile ? (
+                    <div className="flex items-center gap-2 text-slate-400">
+                      <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{cap.mobile.replace(/.(?=.{4})/g, '*')}</span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{cap.mobile || '—'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Assigned Team: <strong className="text-slate-900">{cap.team_name}</strong></span>
+                    <Shield className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Franchise: <strong className="text-slate-900">{cap.team_name}</strong></span>
                   </div>
                 </div>
 
-                {/* Confirmation controls */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                  {cap.status !== 'APPROVED' ? (
+                {/* Confirmation controls for Admin */}
+                {isAdmin ? (
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                    {cap.status !== 'APPROVED' ? (
+                      <Button
+                        size="sm"
+                        onClick={() => handleUpdateStatus(cap.id, 'APPROVED')}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-xs py-1"
+                        icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                      >
+                        Confirm
+                      </Button>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1 mr-auto">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Confirmed
+                      </span>
+                    )}
+                    {cap.status !== 'REJECTED' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleUpdateStatus(cap.id, 'REJECTED')}
+                        className="text-xs py-1"
+                      >
+                        Reject
+                      </Button>
+                    )}
                     <Button
                       size="sm"
-                      onClick={() => handleUpdateStatus(cap.id, 'APPROVED')}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-xs py-1"
-                      icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                      variant="danger"
+                      onClick={() => handleDeleteCaptain(cap.id, cap.name)}
+                      className="text-xs py-1 px-2.5"
+                      title="Delete Captain"
                     >
-                      Confirm & Approve Captain
+                      Delete
                     </Button>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      Confirmed by Super Admin
+                  </div>
+                ) : (
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Appointed Captain
                     </span>
-                  )}
-                  {cap.status !== 'REJECTED' && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => handleUpdateStatus(cap.id, 'REJECTED')}
-                      className="text-xs py-1"
-                    >
-                      Reject
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => handleDeleteCaptain(cap.id, cap.name)}
-                    className="text-xs py-1 px-2.5"
-                    title="Delete Captain"
-                  >
-                    Delete
-                  </Button>
-                </div>
+                    <span className="font-medium">
+                      Purse: ₹{(cap.remaining_purse || 20000).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                )}
               </div>
             </Card>
           ))}
