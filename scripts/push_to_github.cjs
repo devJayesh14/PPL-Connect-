@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: remove team requirement during bid increments, only select winning team when player is sold',
+      message: 'fix: resolve auction_id safely in adjust-purse to prevent NOT NULL constraint error',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

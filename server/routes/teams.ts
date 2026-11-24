@@ -294,38 +294,61 @@ router.post('/:id/adjust-purse', (req, res) => {
     const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.id) as any;
     if (!team) return res.status(404).json({ error: 'Team not found' });
 
-    const newRemaining = team.remaining_purse + Number(adjustmentAmount);
+    const newRemaining = Number(team.remaining_purse || 0) + Number(adjustmentAmount);
     if (newRemaining < 0) {
       return res.status(400).json({ error: 'Adjustment would result in negative remaining purse.' });
     }
 
     const now = new Date().toISOString();
     const txId = 'ptx_' + Date.now();
-    const targetAuctionId = auctionId || team.auction_id;
+    let targetAuctionId = auctionId || team.auction_id;
+
+    // Verify targetAuctionId exists in auctions table
+    let auc = targetAuctionId ? db.prepare('SELECT id FROM auctions WHERE id = ?').get(targetAuctionId) as any : null;
+
+    if (!auc) {
+      auc = db.prepare("SELECT id FROM auctions WHERE status IN ('LIVE', 'REGISTRATION_OPEN', 'UPCOMING') ORDER BY created_at DESC LIMIT 1").get() as any;
+      if (!auc) {
+        auc = db.prepare('SELECT id FROM auctions ORDER BY created_at DESC LIMIT 1').get() as any;
+      }
+      if (!auc) {
+        const nowTime = new Date().toISOString();
+        const defaultAucId = 'auc_default';
+        const targetTourId = team.tournament_id || 'tour_ppl_2026';
+        db.prepare(`
+          INSERT OR IGNORE INTO auctions (id, tournament_id, name, description, auction_date, start_time, end_time, timezone, status, share_link, created_at, updated_at)
+          VALUES (?, ?, 'PPL Grand Auction 2026', 'Official Player Auction for Priyanka Premiere League', '2026-12-10', '10:00 AM', '06:00 PM', 'IST (+05:30)', 'REGISTRATION_OPEN', '/auction/ppl-2026', ?, ?)
+        `).run(defaultAucId, targetTourId, nowTime, nowTime);
+        auc = { id: defaultAucId };
+      }
+      targetAuctionId = auc.id;
+      try {
+        db.prepare('UPDATE teams SET auction_id = ? WHERE id = ?').run(targetAuctionId, team.id);
+      } catch (e) {}
+    }
 
     const adjustTx = db.transaction(() => {
       db.prepare(`
         UPDATE teams 
-        SET remaining_purse = ?
+        SET remaining_purse = ?,
+            auction_id = COALESCE(auction_id, ?)
         WHERE id = ?
-      `).run(newRemaining, team.id);
+      `).run(newRemaining, targetAuctionId, team.id);
 
       db.prepare(`
         INSERT INTO purse_transactions (id, auction_id, team_id, type, amount, balance_after, description, created_by, created_at)
         VALUES (?, ?, ?, 'ADMIN_ADJUSTMENT', ?, ?, ?, 'ADMIN', ?)
-      `).run(txId, targetAuctionId, team.id, adjustmentAmount, newRemaining, reason || 'Manual Admin Purse Adjustment', now);
+      `).run(txId, targetAuctionId, team.id, Number(adjustmentAmount), newRemaining, reason || 'Manual Admin Purse Adjustment', now);
 
-      if (targetAuctionId) {
-        db.prepare(`
-          INSERT INTO audit_logs (id, auction_id, user_id, user_name, action, details, timestamp)
-          VALUES (?, ?, 'ADMIN', 'ADMIN', 'PURSE_ADJUSTED', ?, ?)
-        `).run(
-          'aud_' + Date.now(),
-          targetAuctionId,
-          `Adjusted purse for team ${team.name} by ₹${Number(adjustmentAmount).toLocaleString('en-IN')}. New balance: ₹${newRemaining.toLocaleString('en-IN')}. Reason: ${reason}`,
-          now
-        );
-      }
+      db.prepare(`
+        INSERT INTO audit_logs (id, auction_id, user_id, user_name, action, details, timestamp)
+        VALUES (?, ?, 'ADMIN', 'ADMIN', 'PURSE_ADJUSTED', ?, ?)
+      `).run(
+        'aud_' + Date.now(),
+        targetAuctionId,
+        `Adjusted purse for team ${team.name} by ₹${Number(adjustmentAmount).toLocaleString('en-IN')}. New balance: ₹${newRemaining.toLocaleString('en-IN')}. Reason: ${reason || 'Manual Admin Purse Adjustment'}`,
+        now
+      );
     });
 
     adjustTx();

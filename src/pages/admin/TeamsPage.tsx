@@ -249,7 +249,7 @@ export const TeamsPage: React.FC = () => {
         body: JSON.stringify({
           adjustmentAmount: Number(adjustmentAmount),
           reason: adjustmentReason || 'Admin Manual Purse Adjustment',
-          auctionId: adjustModal.auction_id,
+          auctionId: adjustModal.auction_id || 'auc_default',
         }),
       });
 
