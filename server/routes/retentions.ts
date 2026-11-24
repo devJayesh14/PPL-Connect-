@@ -173,11 +173,14 @@ router.post('/', (req, res) => {
 
     // 3. Resolve active Auction & Tournament
     let targetAuction: any = null;
-    if (auctionId && auctionId !== 'auc_default') {
+    if (auctionId) {
       targetAuction = db.prepare('SELECT * FROM auctions WHERE id = ?').get(auctionId);
     }
     if (!targetAuction && team.auction_id) {
       targetAuction = db.prepare('SELECT * FROM auctions WHERE id = ?').get(team.auction_id);
+    }
+    if (!targetAuction) {
+      targetAuction = db.prepare('SELECT * FROM auctions WHERE id = ?').get('auc_default');
     }
     if (!targetAuction) {
       targetAuction = db.prepare('SELECT * FROM auctions ORDER BY created_at DESC LIMIT 1').get();
@@ -191,20 +194,54 @@ router.post('/', (req, res) => {
       const existingTour = db.prepare('SELECT id FROM tournaments WHERE id = ?').get(tourId);
       if (!existingTour) {
         db.prepare(`
-          INSERT INTO tournaments (id, name, description, sport, status, created_at, updated_at)
-          VALUES (?, 'Priyanka Premiere League (PPL)', 'Official PPL Championship', 'CRICKET', 'UPCOMING', ?, ?)
+          INSERT OR IGNORE INTO tournaments (id, name, description, sport, status, start_date, end_date, location, logo, banner, created_at, updated_at)
+          VALUES (?, 'Priyanka Premiere League (PPL)', 'Official PPL Championship Tournament', 'CRICKET', 'UPCOMING', '2026-12-10', '2026-12-25', 'Surat, Gujarat', '/logo.png', '', ?, ?)
         `).run(tourId, now, now);
       }
+      
+      const shareLink = `/auction/ppl-2026`;
       db.prepare(`
-        INSERT INTO auctions (id, tournament_id, name, auction_date, start_time, status, created_at, updated_at)
-        VALUES (?, ?, 'PPL Grand Auction 2026', '2026-12-10', '10:00 AM', 'REGISTRATION_OPEN', ?, ?)
-      `).run(aucId, tourId, now, now);
+        INSERT OR IGNORE INTO auctions (id, tournament_id, name, description, auction_date, start_time, end_time, timezone, status, logo, banner, share_link, created_at, updated_at)
+        VALUES (?, ?, 'PPL Grand Auction 2026', 'Official Player Auction for Priyanka Premiere League', '2026-12-10', '10:00 AM', '06:00 PM', 'IST (+05:30)', 'REGISTRATION_OPEN', '/logo.png', '', ?, ?, ?)
+      `).run(aucId, tourId, shareLink, now, now);
 
-      targetAuction = { id: aucId, tournament_id: tourId, name: 'PPL Grand Auction 2026' };
-      db.prepare('UPDATE teams SET tournament_id = ?, auction_id = ? WHERE id = ?').run(tourId, aucId, teamId);
+      db.prepare(`
+        INSERT OR IGNORE INTO auction_configs (
+          id, auction_id, total_purse_per_team, starting_purse, allow_different_purse_per_team,
+          allow_purse_adjustment, allow_admin_manual_purse_adjustment, min_base_price,
+          default_base_price, max_base_price, allow_individual_base_price, bid_increment,
+          min_players_per_team, max_players_per_team, min_overseas_players, max_overseas_players,
+          enable_retention, min_retentions, max_retentions, retention_uses_purse,
+          retention_price_model, retention_price_config, bid_timer_seconds, auto_extension,
+          registration_open
+        ) VALUES (
+          'cfg_auc_default', 'auc_default', 20000, 20000, 0,
+          1, 1, 100,
+          500, 50000, 1, 100,
+          11, 15, 0, 4,
+          1, 0, 1, 0,
+          'FIXED', '[0]', 30, 1,
+          1
+        )
+      `).run();
+
+      targetAuction = db.prepare('SELECT * FROM auctions WHERE id = ?').get(aucId);
+      if (!targetAuction) {
+        targetAuction = db.prepare('SELECT * FROM auctions ORDER BY created_at DESC LIMIT 1').get();
+      }
+    }
+
+    if (!targetAuction) {
+      return res.status(500).json({ error: 'Could not resolve active auction. Please ensure an auction exists.' });
     }
 
     const resolvedAuctionId = targetAuction.id;
+
+    // Ensure team is linked to tournament and auction
+    if (!team.tournament_id || !team.auction_id) {
+      db.prepare('UPDATE teams SET tournament_id = COALESCE(tournament_id, ?), auction_id = COALESCE(auction_id, ?) WHERE id = ?')
+        .run(targetAuction.tournament_id, resolvedAuctionId, teamId);
+    }
 
     // 4. RULE: Every captain can retain ONE player only
     const maxLimit = 1;
@@ -239,6 +276,12 @@ router.post('/', (req, res) => {
     const confirmationToken = 'rtok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
 
     const retainTx = db.transaction(() => {
+      // Remove any previously rejected retention for this player to prevent UNIQUE constraint errors
+      db.prepare(`
+        DELETE FROM team_retentions 
+        WHERE auction_id = ? AND player_id = ? AND status = 'REJECTED'
+      `).run(resolvedAuctionId, playerId);
+
       // Insert retention record marked PENDING_CONFIRMATION
       db.prepare(`
         INSERT INTO team_retentions (id, auction_id, team_id, player_id, retention_order, retention_price, approved_by_admin, status, confirmation_token, created_at)

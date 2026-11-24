@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: add photo image change options for admin in player list and edit modal with auto-compression',
+      message: 'fix: fix auctions.share_link NOT NULL constraint failure in player retention creation',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

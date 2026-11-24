@@ -95,6 +95,7 @@ export const CaptainRetentionPage: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          auctionId: team?.auction_id || 'auc_default',
           teamId: targetTeamId,
           playerId: selectedPlayerId,
         }),
