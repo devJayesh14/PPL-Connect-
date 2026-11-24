@@ -3,6 +3,8 @@ import { reloadDatabase, getDatabaseBuffer } from './index.js';
 
 let isSyncing = false;
 let pendingSync = false;
+let lastSyncedAt: string | null = null;
+let lastCheckTime = 0;
 
 function getDatabaseUrl(): string | null {
   return process.env.DATABASE_URL || process.env.POSTGRES_URL || null;
@@ -28,27 +30,38 @@ async function ensureTable(sql: any) {
 /**
  * Downloads latest central DB snapshot from Neon Postgres and reloads database safely.
  */
-export async function pullDatabaseFromNeon(): Promise<boolean> {
+export async function pullDatabaseFromNeon(force = false): Promise<boolean> {
   const url = getDatabaseUrl();
   if (!url) return false;
 
   try {
+    const now = Date.now();
+    // Debounce checks within 3 seconds to keep responses fast
+    if (!force && now - lastCheckTime < 3000) {
+      return false;
+    }
+    lastCheckTime = now;
+
     const sql = neon(url);
     await ensureTable(sql);
 
     const rows = await sql`SELECT ENCODE(data, 'base64') as b64, updated_at FROM ppl_db_storage WHERE id = 'central_db'`;
     if (rows && rows.length > 0 && rows[0].b64) {
-      const dataBuf = Buffer.from(rows[0].b64, 'base64');
+      const updatedAtStr = String(rows[0].updated_at);
+      if (!force && lastSyncedAt && lastSyncedAt === updatedAtStr) {
+        return false;
+      }
 
+      const dataBuf = Buffer.from(rows[0].b64, 'base64');
       if (dataBuf.length > 1000) {
         const reloaded = reloadDatabase(dataBuf);
         if (reloaded) {
-          console.log(`[NEON SYNC] Successfully pulled central database (${(dataBuf.length / 1024).toFixed(1)} KB) from Neon Postgres`);
+          lastSyncedAt = updatedAtStr;
+          console.log(`[NEON SYNC] Successfully synced database snapshot (${(dataBuf.length / 1024).toFixed(1)} KB) [${updatedAtStr}]`);
           return true;
         }
       }
     }
-    console.log('[NEON SYNC] Central database is currently clean/empty in Neon Postgres');
     return false;
   } catch (err) {
     console.error('[NEON SYNC] Error pulling database from Neon:', err);

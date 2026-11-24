@@ -39,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { name: 'Teams', path: '/teams', icon: Shield },
     { name: 'Captains & Approvals', path: '/captains', icon: Award },
     { name: 'Players Registry', path: '/players', icon: Users },
+    { name: 'Shareable Players Pool', path: '/players-list', icon: Users, highlight: true },
     { name: 'Auction Pool', path: '/auction-pool', icon: Layers },
     { name: 'Retentions', path: '/retentions', icon: Lock },
     { name: 'Live Auction Room', path: '/live-auction', icon: Radio, highlight: true },
@@ -53,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const captainNav = [
     { name: 'Captain Dashboard', path: '/captain', icon: LayoutDashboard },
     { name: 'Live Auction Bidding', path: '/captain/live', icon: Radio, highlight: true },
+    { name: 'Shareable Players Pool', path: '/players-list', icon: Users, highlight: true },
     { name: 'Team Retentions', path: '/captain/retentions', icon: Lock },
     { name: 'My Squad & Purse', path: '/captain/squad', icon: Shield },
     { name: 'Auction Pool View', path: '/auction-pool', icon: Layers },
@@ -61,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   // Player / Public suite: SIMPLIFIED (NO player registration once logged in!)
   const playerNav = [
     { name: 'Auction Details', path: '/', icon: Gavel },
+    { name: 'Shareable Players Pool', path: '/players-list', icon: Users, highlight: true },
     ...(!isLoggedIn ? [{ name: 'Player Registration', path: '/register-player', icon: UserCheck, highlight: true }] : []),
     { name: 'Live Auction Screen', path: '/live-auction', icon: Radio },
   ];

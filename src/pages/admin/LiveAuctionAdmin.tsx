@@ -54,6 +54,10 @@ export const LiveAuctionAdmin: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Admin Quick Bid Controls state
+  const [adminBiddingTeamId, setAdminBiddingTeamId] = useState<string>('');
+  const [customBidAmount, setCustomBidAmount] = useState<string>('');
+
   // 1. Resolve Active Auction ID
   useEffect(() => {
     if (routeAuctionId) {
@@ -89,7 +93,13 @@ export const LiveAuctionAdmin: React.FC = () => {
         const state = await stateRes.json();
         setRoomState(state);
       }
-      if (teamsRes.ok) setTeams(await teamsRes.json());
+      if (teamsRes.ok) {
+        const tList = await teamsRes.json();
+        setTeams(tList);
+        if (tList && tList.length > 0) {
+          setAdminBiddingTeamId((prev) => prev || tList[0].id);
+        }
+      }
       if (poolRes.ok) setPoolPlayers(await poolRes.json());
       if (aucRes.ok) setAuctionInfo(await aucRes.json());
     } catch (e) {
@@ -344,16 +354,8 @@ export const LiveAuctionAdmin: React.FC = () => {
     }
   };
 
-  // Quick Bid increment from Admin
-  const handleAdminBidIncrement = async (increment: number) => {
-    if (!roomState?.currentPlayer) return;
-    const teamId = teams[0]?.id;
-    if (!teamId) {
-      alert('Please create at least one team in Team Management first.');
-      return;
-    }
-    const amount = (roomState.currentBid || roomState.currentPlayer.basePrice) + increment;
-
+  // Admin placing / incrementing bid on behalf of chosen franchise team
+  const submitAdminBid = async (teamId: string, amount: number) => {
     if (socket && isConnected) {
       socket.emit('PLACE_BID', { auctionId, teamId, customAmount: amount }, (res: any) => {
         if (!res.success) alert(res.message);
@@ -374,6 +376,35 @@ export const LiveAuctionAdmin: React.FC = () => {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleAdminBidIncrement = async (increment: number) => {
+    if (!roomState?.currentPlayer) return;
+    const teamId = adminBiddingTeamId || teams[0]?.id;
+    if (!teamId) {
+      alert('Please select or create at least one team first.');
+      return;
+    }
+    const currentPrice = roomState.currentBid || roomState.currentPlayer.basePrice || 500;
+    const amount = currentPrice + increment;
+    await submitAdminBid(teamId, amount);
+  };
+
+  const handleAdminCustomBid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomState?.currentPlayer) return;
+    const teamId = adminBiddingTeamId || teams[0]?.id;
+    if (!teamId) {
+      alert('Please select a bidding team first.');
+      return;
+    }
+    const amount = Number(customBidAmount);
+    if (!amount || amount <= (roomState.currentBid || 0)) {
+      alert(`Bid amount must be greater than current bid (₹${roomState.currentBid || 0})`);
+      return;
+    }
+    await submitAdminBid(teamId, amount);
+    setCustomBidAmount('');
   };
 
   const pendingPoolPlayers = poolPlayers.filter((p) => p.status === 'PENDING');
@@ -567,27 +598,97 @@ export const LiveAuctionAdmin: React.FC = () => {
 
               {/* Quick Admin Increment Controls - ONLY FOR SUPER ADMIN */}
               {isAdmin && (
-                <div className="mt-4 p-3 bg-white border border-slate-200 rounded-xl shadow-xs text-xs">
-                  <span className="font-bold text-slate-700 block mb-1.5 flex items-center gap-1">
-                    <Coins className="w-3.5 h-3.5 text-blue-600" />
-                    Admin Quick Bid
-                  </span>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      onClick={() => handleAdminBidIncrement(5000)}
-                      disabled={!roomState?.currentPlayer}
-                      className="p-2 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-lg font-bold text-blue-800 text-center transition-colors"
-                    >
-                      +₹5,000
-                    </button>
-                    <button
-                      onClick={() => handleAdminBidIncrement(10000)}
-                      disabled={!roomState?.currentPlayer}
-                      className="p-2 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-lg font-bold text-blue-800 text-center transition-colors"
-                    >
-                      +₹10,000
-                    </button>
+                <div className="mt-4 p-3 bg-white border border-slate-200 rounded-xl shadow-xs text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-slate-800 flex items-center gap-1 uppercase text-[10px] tracking-wider">
+                      <Coins className="w-3.5 h-3.5 text-blue-600" />
+                      Auctioneer Bid Controls
+                    </span>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      Admin Only
+                    </span>
                   </div>
+
+                  {/* Bidding Team Selection */}
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Bidding Team
+                    </label>
+                    <select
+                      value={adminBiddingTeamId || (teams[0]?.id ?? '')}
+                      onChange={(e) => setAdminBiddingTeamId(e.target.value)}
+                      disabled={!roomState?.currentPlayer}
+                      className="w-full text-xs font-bold p-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                    >
+                      {teams.length === 0 ? (
+                        <option value="">No teams available</option>
+                      ) : (
+                        teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} (₹{t.remainingPurse ?? (t as any).remaining_purse ?? 20000})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Increments */}
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Quick Increments
+                    </label>
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        onClick={() => handleAdminBidIncrement(100)}
+                        disabled={!roomState?.currentPlayer}
+                        className="py-1 px-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-lg font-bold text-blue-800 text-center transition-colors text-xs cursor-pointer"
+                      >
+                        +₹100
+                      </button>
+                      <button
+                        onClick={() => handleAdminBidIncrement(200)}
+                        disabled={!roomState?.currentPlayer}
+                        className="py-1 px-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-lg font-bold text-blue-800 text-center transition-colors text-xs cursor-pointer"
+                      >
+                        +₹200
+                      </button>
+                      <button
+                        onClick={() => handleAdminBidIncrement(500)}
+                        disabled={!roomState?.currentPlayer}
+                        className="py-1 px-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-lg font-bold text-blue-800 text-center transition-colors text-xs cursor-pointer"
+                      >
+                        +₹500
+                      </button>
+                      <button
+                        onClick={() => handleAdminBidIncrement(1000)}
+                        disabled={!roomState?.currentPlayer}
+                        className="py-1 px-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-lg font-bold text-blue-800 text-center transition-colors text-xs cursor-pointer"
+                      >
+                        +₹1,000
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Custom Bid Input */}
+                  <form onSubmit={handleAdminCustomBid} className="pt-1.5 border-t border-slate-100 flex gap-1">
+                    <input
+                      type="number"
+                      placeholder="Custom ₹"
+                      min={(roomState?.currentBid || 0) + 50}
+                      step="50"
+                      value={customBidAmount}
+                      onChange={(e) => setCustomBidAmount(e.target.value)}
+                      disabled={!roomState?.currentPlayer}
+                      className="w-full text-xs font-semibold p-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!roomState?.currentPlayer || !customBidAmount}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-bold text-xs shrink-0 transition-colors cursor-pointer"
+                    >
+                      Bid
+                    </button>
+                  </form>
                 </div>
               )}
             </div>
@@ -670,12 +771,12 @@ export const LiveAuctionAdmin: React.FC = () => {
               </label>
               <input
                 type="number"
-                step="1000"
-                min="5000"
+                step="50"
+                min="100"
                 required
                 value={soldPriceInput}
                 onChange={(e) => setSoldPriceInput(e.target.value)}
-                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 font-bold"
+                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 font-bold focus:outline-none focus:border-blue-500"
               />
             </div>
 

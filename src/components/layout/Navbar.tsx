@@ -4,7 +4,7 @@ import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { RoleSwitcher } from './RoleSwitcher';
 import { Button } from '../common/Button';
-import { Trophy, Radio, Share2, Menu, UserCheck, LogIn, LogOut, Shield } from 'lucide-react';
+import { Trophy, Radio, Share2, Menu, UserCheck, LogIn, LogOut, Shield, Users } from 'lucide-react';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -71,6 +71,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
                 </Button>
               </Link>
             )}
+
+            {/* Shareable Players Pool Link */}
+            <Link
+              to="/players-list"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 text-xs font-bold transition-colors"
+              title="Shareable Public Players Pool"
+            >
+              <Users className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden sm:inline">Players Pool</span>
+            </Link>
 
             {/* Live Auction Spectator View */}
             <Link

@@ -73,6 +73,60 @@ router.get('/management', (req, res) => {
   }
 });
 
+// GET Public Shareable Player Pool (NO MOBILE NUMBER FOR PRIVACY)
+router.get('/public-pool', (req, res) => {
+  try {
+    const { role, search } = req.query;
+    let whereClause = ' WHERE 1=1';
+    const params: any[] = [];
+
+    if (role && role !== 'ALL') {
+      whereClause += ' AND p.playing_role = ?';
+      params.push(role);
+    }
+
+    if (search) {
+      whereClause += ' AND (p.full_name LIKE ? OR p.playing_role LIKE ? OR p.batting_style LIKE ? OR p.bowling_style LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const players = db.prepare(`
+      SELECT 
+        p.id, 
+        p.full_name, 
+        p.photo, 
+        p.playing_role, 
+        p.batting_style, 
+        p.bowling_style, 
+        p.is_overseas, 
+        p.experience, 
+        p.created_at,
+        COALESCE(pr.base_price, 500) as base_price,
+        COALESCE(pr.status, p.status, 'PENDING') as status,
+        t.name as retained_team_name,
+        t.logo as retained_team_logo,
+        ts.name as sold_team_name,
+        ap.sold_price
+      FROM players p
+      LEFT JOIN (
+        SELECT player_id, base_price, status,
+               ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY created_at DESC) as rn
+        FROM player_registrations
+      ) pr ON p.id = pr.player_id AND pr.rn = 1
+      LEFT JOIN team_retentions tr ON p.id = tr.player_id AND tr.status = 'CONFIRMED'
+      LEFT JOIN teams t ON tr.team_id = t.id
+      LEFT JOIN auction_players ap ON p.id = ap.player_id AND ap.status = 'SOLD'
+      LEFT JOIN teams ts ON ap.team_id = ts.id
+      ${whereClause}
+      ORDER BY p.full_name ASC
+    `).all(...params);
+
+    res.json(players);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // PATCH Approve or Reject player directly
 router.patch('/:id/approval', (req, res) => {
   try {

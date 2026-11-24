@@ -5,11 +5,10 @@ import { AuctionRoomState, Team } from '../../types';
 import { LivePlayerCard } from '../../components/auction/LivePlayerCard';
 import { LiveTimer } from '../../components/auction/LiveTimer';
 import { LiveBidFeed } from '../../components/auction/LiveBidFeed';
-import { BidButton } from '../../components/auction/BidButton';
 import { Badge } from '../../components/common/Badge';
 import { formatCurrency, formatCompactCurrency } from '../../utils/formatters';
 import confetti from 'canvas-confetti';
-import { Shield, Wallet, Users, Award, Radio } from 'lucide-react';
+import { Shield, Wallet, Users, Award, Radio, Eye } from 'lucide-react';
 
 export const CaptainLiveAuction: React.FC = () => {
   const { currentTeamId, availableTeams } = useAuth();
@@ -188,40 +187,50 @@ export const CaptainLiveAuction: React.FC = () => {
             </div>
           </div>
 
-          {/* Captain Large Bid Control Box (Section 15 & 26) */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-card">
+          {/* Captain Live Spectator Screen (Admin-only bidding rule) */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-700 rounded-xl p-5 shadow-card text-white">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Radio className="w-4 h-4 text-blue-600 animate-pulse" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Instant Bidding Action
+                <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Live Auction Spectator Console
                 </h3>
               </div>
-              <span className="text-xs text-slate-500">
-                Bid Increment: <strong>{formatCurrency(auctionConfig?.bidIncrement || 5000)}</strong>
+              <span className="text-[11px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+                Admin / Auctioneer Controlled
               </span>
             </div>
 
-            <BidButton
-              nextBidAmount={roomState?.nextBidAmount || 0}
-              currentBid={roomState?.currentBid || 0}
-              team={
-                teamData
-                  ? {
-                      id: teamData.id,
-                      name: teamData.name,
-                      remainingPurse: teamData.remainingPurse,
-                      squadCount: currentSquadCount,
-                    }
-                  : null
-              }
-              highestBidderId={roomState?.highestBidder?.teamId}
-              onPlaceBid={handlePlaceBid}
-              isAuctionActive={roomState?.status === 'BIDDING'}
-              minSquad={auctionConfig?.minPlayersPerTeam || 11}
-              maxSquad={auctionConfig?.maxPlayersPerTeam || 15}
-              minBasePrice={auctionConfig?.minBasePrice || 10000}
-            />
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              Official Live Auction is underway. As per tournament regulations, bids are placed exclusively by the Super Admin &amp; Auctioneer. Captains can monitor live bids, leading teams, and purse balances in real time.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-3.5 rounded-lg border border-slate-800 text-center">
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Current Bid</span>
+                <span className="text-base sm:text-lg font-black text-amber-400">
+                  {formatCurrency(roomState?.currentBid || 0)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Leading Bidder</span>
+                <span className="text-sm sm:text-base font-extrabold text-white truncate block">
+                  {roomState?.highestBidder?.teamName || 'Opening Stage'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Your Purse</span>
+                <span className="text-base sm:text-lg font-extrabold text-blue-400">
+                  {formatCurrency(teamData?.remainingPurse ?? 20000)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Your Squad</span>
+                <span className="text-base sm:text-lg font-extrabold text-emerald-400">
+                  {currentSquadCount} / {auctionConfig?.maxPlayersPerTeam || 15}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 

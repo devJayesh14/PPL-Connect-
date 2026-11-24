@@ -48,18 +48,27 @@ function ensureDbSynced(): Promise<void> {
   if (!dbSyncPromise) {
     dbSyncPromise = (async () => {
       try {
-        await pullDatabaseFromNeon();
+        await pullDatabaseFromNeon(true);
       } catch (e) {
         console.error('[DB] Initial pull error:', e);
       }
       initDatabase();
       seedDatabase();
     })();
+    return dbSyncPromise;
   }
-  return dbSyncPromise;
+  // Periodically check Neon snapshot on debounced interval (every >= 3s)
+  return pullDatabaseFromNeon().then(() => {});
 }
 
 app.use(async (req, res, next) => {
+  // Prevent aggressive browser/CDN caching for dynamic auction API requests
+  if (req.path.startsWith('/api')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+
   await ensureDbSynced();
 
   // If request modifies database, push snapshot to Neon before completing response
