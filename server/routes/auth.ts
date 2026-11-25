@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
+import { sanitizePlayerPhoto } from '../utils/photoValidation.js';
 
 const router = Router();
 
@@ -195,6 +196,12 @@ router.post('/register-player', (req, res) => {
       return res.status(400).json({ error: 'Player photo upload is mandatory. Please provide a photo.' });
     }
 
+    const sanitized = sanitizePlayerPhoto(photo);
+    if (!sanitized.ok || !sanitized.photo) {
+      return res.status(400).json({ error: sanitized.error || 'Please upload a valid JPEG, PNG, or WEBP photo.' });
+    }
+    const cleanPhoto = sanitized.photo;
+
     const cleanEmail = email.trim().toLowerCase();
 
     // STRICT DUPLICATE EMAIL CHECK: "same email id not allowed if then do not allow to register"
@@ -223,7 +230,7 @@ router.post('/register-player', (req, res) => {
       db.prepare(`
         INSERT INTO players (id, full_name, photo, mobile, email, playing_role, batting_style, bowling_style, created_at)
         VALUES (?, ?, ?, ?, ?, ?, 'Right Hand Bat', 'Right Arm Medium', ?)
-      `).run(playerId, fullName, photo || '', mobile || '', cleanEmail, playingRole, now);
+      `).run(playerId, fullName, cleanPhoto, mobile || '', cleanEmail, playingRole, now);
 
       // 2. Also create user account record for this player
       db.prepare(`

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency, formatCompactCurrency } from '../../utils/formatters';
 import { exportToExcel, exportToPDF } from '../../utils/exportUtils';
 import {
@@ -198,15 +199,12 @@ export const FinalSquadsPage: React.FC = () => {
                   sq.players.map((p: any) => (
                     <div key={p.player_id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                          {p.photo ? (
-                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                              {p.full_name.charAt(0)}
-                            </div>
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={p.photo}
+                          name={p.full_name}
+                          className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                        />
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-slate-900">{p.full_name}</span>

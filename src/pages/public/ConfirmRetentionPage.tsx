@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { CheckCircle2, XCircle, Shield, User, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const ConfirmRetentionPage: React.FC = () => {
@@ -128,15 +129,12 @@ export const ConfirmRetentionPage: React.FC = () => {
 
               {/* Player details */}
               <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-white border border-slate-200 shrink-0">
-                  {retention.player_photo ? (
-                    <img src={retention.player_photo} alt={retention.player_name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-bold text-blue-600 bg-blue-50">
-                      {retention.player_name?.charAt(0) || 'P'}
-                    </div>
-                  )}
-                </div>
+                <PlayerAvatar
+                  src={retention.player_photo}
+                  name={retention.player_name}
+                  className="w-12 h-12 rounded-full overflow-hidden bg-white border border-slate-200 shrink-0"
+                  fallbackClassName="w-full h-full flex items-center justify-center font-bold text-blue-600 bg-blue-50"
+                />
                 <div className="min-w-0">
                   <div className="font-bold text-slate-900 text-sm truncate">{retention.player_name}</div>
                   <div className="text-[11px] text-slate-500 font-mono truncate">{retention.player_email}</div>

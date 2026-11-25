@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { compressPlayerImage, normalizePlayerPhotoSrc } from '../../utils/imageUtils';
 import {
   Search,
   CheckCircle2,
@@ -51,61 +52,20 @@ export const PlayerSelfCheckPage: React.FC = () => {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoLoadError, setPhotoLoadError] = useState(false);
 
   const registrationUrl = `${window.location.origin}/register`;
-
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const maxDim = 600;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height && width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(e.target?.result as string);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.onerror = reject;
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !foundPlayer) return;
-
-    if (!file.type.startsWith('image/')) {
-      setPhotoError('Please select a valid image file (JPEG, PNG, WebP).');
-      return;
-    }
 
     try {
       setUploadingPhoto(true);
       setPhotoError(null);
       setPhotoSuccess(null);
 
-      const compressedBase64 = await compressImage(file);
+      const compressedBase64 = await compressPlayerImage(file, { maxDim: 500, quality: 0.8 });
 
       const res = await fetch('/api/players/self-update-photo', {
         method: 'POST',
@@ -123,6 +83,7 @@ export const PlayerSelfCheckPage: React.FC = () => {
       }
 
       setFoundPlayer((prev) => (prev ? { ...prev, photo: compressedBase64, hasPhoto: true } : prev));
+      setPhotoLoadError(false);
       setPhotoSuccess('✓ Profile photo updated successfully!');
       setTimeout(() => setPhotoSuccess(null), 5000);
     } catch (err: any) {
@@ -156,6 +117,7 @@ export const PlayerSelfCheckPage: React.FC = () => {
       }
 
       setHasSearched(true);
+      setPhotoLoadError(false);
       if (data.found && data.player) {
         setFoundPlayer(data.player);
       } else {
@@ -267,91 +229,101 @@ export const PlayerSelfCheckPage: React.FC = () => {
             </div>
 
             {/* Profile Photo Display & Upload Section */}
-            <div className="bg-white rounded-xl border border-emerald-100 p-4 flex flex-col items-center justify-center text-center shadow-2xs">
-              <div className="relative group">
-                <div
-                  className={`w-28 h-28 rounded-2xl overflow-hidden border-2 shadow-md transition-all ${
-                    foundPlayer.photo && foundPlayer.hasPhoto
-                      ? 'border-blue-500 bg-slate-100 ring-2 ring-blue-100'
-                      : 'border-amber-400 bg-amber-50 ring-4 ring-amber-100 animate-pulse'
-                  }`}
-                >
-                  {foundPlayer.photo ? (
-                    <img
-                      src={foundPlayer.photo}
-                      alt={foundPlayer.fullName}
-                      className="w-full h-full object-cover"
+            {(() => {
+              const displayPhoto = normalizePlayerPhotoSrc(foundPlayer.photo);
+              const hasValidPhoto = Boolean(displayPhoto && !photoLoadError);
+              return (
+                <>
+                  <div className="bg-white rounded-xl border border-emerald-100 p-4 flex flex-col items-center justify-center text-center shadow-2xs">
+                    <div className="relative group">
+                      <div
+                        className={`w-28 h-28 rounded-2xl overflow-hidden border-2 shadow-md transition-all ${
+                          hasValidPhoto
+                            ? 'border-blue-500 bg-slate-100 ring-2 ring-blue-100'
+                            : 'border-amber-400 bg-amber-50 ring-4 ring-amber-100 animate-pulse'
+                        }`}
+                      >
+                        {hasValidPhoto && displayPhoto ? (
+                          <img
+                            src={displayPhoto}
+                            alt={foundPlayer.fullName}
+                            decoding="async"
+                            onError={() => setPhotoLoadError(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-amber-600 p-2 text-center bg-amber-50">
+                            <User className="w-10 h-10 text-amber-500 mb-1" />
+                            <span className="text-[10px] font-black uppercase text-amber-700">No Photo</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quick overlay change button */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingPhoto}
+                        className="absolute -bottom-2 -right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-xl shadow-md border-2 border-white transition-transform hover:scale-110 active:scale-95 disabled:opacity-50"
+                        title={hasValidPhoto ? 'Change Profile Photo' : 'Upload Profile Photo'}
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoSelect}
+                      className="hidden"
                     />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-amber-600 p-2 text-center bg-amber-50">
-                      <User className="w-10 h-10 text-amber-500 mb-1" />
-                      <span className="text-[10px] font-black uppercase text-amber-700">No Photo</span>
+
+                    {/* Action Button Below Image */}
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors disabled:opacity-50"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      {uploadingPhoto
+                        ? 'Compressing & Uploading...'
+                        : hasValidPhoto
+                        ? 'Change Profile Photo'
+                        : 'Upload Profile Photo'}
+                    </button>
+                  </div>
+
+                  {/* Warning when Photo is missing */}
+                  {!hasValidPhoto && (
+                    <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-amber-950 text-xs space-y-2.5 animate-in fade-in duration-150">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-extrabold text-amber-900 block text-xs">
+                            ⚠️ Action Required: Profile Photo Missing!
+                          </span>
+                          <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+                            Please upload your profile photo. Photos are shown on the live auction screen during team bidding and on official final team squad rosters.
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingPhoto}
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs py-2.5 shadow-xs flex items-center justify-center gap-1.5"
+                      >
+                        <Upload className="w-4 h-4" />
+                        {uploadingPhoto ? 'Uploading Photo...' : 'Upload Profile Photo Now'}
+                      </Button>
                     </div>
                   )}
-                </div>
-
-                {/* Quick overlay change button */}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingPhoto}
-                  className="absolute -bottom-2 -right-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-xl shadow-md border-2 border-white transition-transform hover:scale-110 active:scale-95 disabled:opacity-50"
-                  title={foundPlayer.photo ? 'Change Profile Photo' : 'Upload Profile Photo'}
-                >
-                  <Camera className="w-4 h-4" />
-                </button>
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoSelect}
-                className="hidden"
-              />
-
-              {/* Action Button Below Image */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingPhoto}
-                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors disabled:opacity-50"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                {uploadingPhoto
-                  ? 'Compressing & Uploading...'
-                  : foundPlayer.photo
-                  ? 'Change Profile Photo'
-                  : 'Upload Profile Photo'}
-              </button>
-            </div>
-
-            {/* Warning when Photo is missing */}
-            {!foundPlayer.photo && (
-              <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-amber-950 text-xs space-y-2.5 animate-in fade-in duration-150">
-                <div className="flex items-start gap-2.5">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-extrabold text-amber-900 block text-xs">
-                      ⚠️ Action Required: Profile Photo Missing!
-                    </span>
-                    <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
-                      Please upload your profile photo. Photos are shown on the live auction screen during team bidding and on official final team squad rosters.
-                    </p>
-                  </div>
-                </div>
-
-                <Button
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingPhoto}
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs py-2.5 shadow-xs flex items-center justify-center gap-1.5"
-                >
-                  <Upload className="w-4 h-4" />
-                  {uploadingPhoto ? 'Uploading Photo...' : 'Upload Profile Photo Now'}
-                </Button>
-              </div>
-            )}
+                </>
+              );
+            })()}
 
             {/* Success message upon upload */}
             {photoSuccess && (

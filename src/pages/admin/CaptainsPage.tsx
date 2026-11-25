@@ -3,6 +3,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { Award, CheckCircle2, XCircle, Shield, Phone, Mail, UserPlus, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -182,17 +183,12 @@ export const CaptainsPage: React.FC = () => {
             <Card key={cap.id} noPadding className="hover:border-blue-300 transition-all shadow-xs border border-slate-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  {cap.player_photo ? (
-                    <img
-                      src={cap.player_photo}
-                      alt={cap.name}
-                      className="w-11 h-11 rounded-full object-cover border-2 border-indigo-200 shadow-xs shrink-0"
-                    />
-                  ) : (
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                      {cap.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <PlayerAvatar
+                    src={cap.player_photo}
+                    name={cap.name}
+                    className="w-11 h-11 rounded-full overflow-hidden border-2 border-indigo-200 shadow-xs shrink-0"
+                    fallbackClassName="w-full h-full bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-black text-sm"
+                  />
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 leading-tight">{cap.name}</h3>
                     <div className="flex items-center gap-1.5 mt-0.5">

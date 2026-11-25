@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency, formatCompactCurrency } from '../../utils/formatters';
 import {
   Trophy,
@@ -205,25 +206,27 @@ export const PublicAuctionView: React.FC = () => {
           </div>
         ) : (
           <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-            {poolPlayers.map((player) => (
-              <div key={player.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                    {player.photo ? (
-                      <img src={player.photo} alt={player.fullName} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 text-xs">
-                        {player.fullName.charAt(0)}
-                      </div>
-                    )}
+            {poolPlayers.map((player) => {
+              const displayName = player.full_name || player.fullName || 'Player';
+              const displayRole = player.playing_role || player.playingRole || 'PLAYER';
+              const displayCat = player.category_name || player.categoryName || 'Standard';
+              const displayBase = player.base_price ?? player.basePrice ?? 500;
+              return (
+                <div key={player.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <PlayerAvatar
+                      src={player.photo}
+                      name={displayName}
+                      className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                      fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 text-xs bg-slate-100"
+                    />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900">{displayName}</h4>
+                      <p className="text-[11px] text-slate-500">
+                        {displayRole} • {displayCat} • Base: {formatCurrency(displayBase)}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900">{player.fullName}</h4>
-                    <p className="text-[11px] text-slate-500">
-                      {player.playingRole} • {player.categoryName || 'Standard'} • Base: {formatCurrency(player.basePrice)}
-                    </p>
-                  </div>
-                </div>
 
                 <Badge
                   variant={
@@ -238,7 +241,8 @@ export const PublicAuctionView: React.FC = () => {
                   {player.status === 'PENDING' ? 'IN POOL' : player.status}
                 </Badge>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

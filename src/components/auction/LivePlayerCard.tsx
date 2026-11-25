@@ -1,5 +1,6 @@
 import React from 'react';
 import { Badge } from '../common/Badge';
+import { PlayerAvatar } from '../common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 import { Globe, Award, ShieldAlert, Sparkles, User } from 'lucide-react';
 
@@ -91,17 +92,15 @@ export const LivePlayerCard: React.FC<LivePlayerCardProps> = ({
         <div className="flex flex-col sm:flex-row gap-6 items-start">
           {/* Player Photo */}
           <div className="relative w-32 h-32 sm:w-40 sm:h-40 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 mx-auto sm:mx-0 shadow-xs">
-            {player.photo ? (
-              <img
-                src={player.photo}
-                alt={player.fullName}
-                className="w-full h-full object-cover object-top"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-400">
-                <User className="w-16 h-16" />
-              </div>
-            )}
+            <PlayerAvatar
+              src={player.photo}
+              name={player.fullName}
+              iconFallback
+              className="w-full h-full"
+              imgClassName="w-full h-full object-cover object-top"
+              fallbackClassName="w-full h-full flex items-center justify-center text-slate-400 bg-slate-100"
+              iconClassName="w-16 h-16"
+            />
             <div className="absolute bottom-1 right-1 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
               {roleLabelMap[player.playingRole] || player.playingRole}
             </div>

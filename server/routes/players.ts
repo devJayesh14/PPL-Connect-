@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
+import { sanitizePlayerPhoto, isDisplayablePhoto } from '../utils/photoValidation.js';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get('/self-check', (req, res) => {
         ORDER BY p.created_at DESC LIMIT 1
       `).get(rawQuery.toLowerCase());
     } else {
-      const digits = rawQuery.replace(/\\D/g, '');
+      const digits = rawQuery.replace(/\D/g, '');
       const last10 = digits.slice(-10);
       if (last10.length < 5) {
         return res.status(400).json({ error: 'Please enter at least 5 digits of your mobile number or a valid email.' });
@@ -67,16 +68,19 @@ router.get('/self-check', (req, res) => {
 
     let maskedMobile = '';
     if (row.mobile) {
-      const cleanMob = row.mobile.replace(/\\D/g, '').slice(-10);
+      const cleanMob = row.mobile.replace(/\D/g, '').slice(-10);
       maskedMobile = cleanMob.length === 10 ? cleanMob.slice(0, 3) + '****' + cleanMob.slice(7) : '******' + cleanMob.slice(-4);
     }
+
+    const sanitizedPhoto = sanitizePlayerPhoto(row.photo);
+    const validPhoto = sanitizedPhoto.ok ? sanitizedPhoto.photo : '';
 
     return res.json({
       found: true,
       player: {
         id: row.id,
         fullName: row.full_name,
-        photo: row.photo || '',
+        photo: validPhoto,
         maskedEmail,
         maskedMobile,
         playingRole: row.playing_role,
@@ -87,7 +91,7 @@ router.get('/self-check', (req, res) => {
         isRetained: !!row.retained_team,
         retainedTeam: row.retained_team || null,
         registeredAt: row.created_at,
-        hasPhoto: !!(row.photo && row.photo.length > 50)
+        hasPhoto: isDisplayablePhoto(validPhoto)
       }
     });
   } catch (err: any) {
@@ -128,25 +132,54 @@ router.post('/self-update-photo', (req, res) => {
       }
     }
 
-    db.prepare('UPDATE players SET photo = ? WHERE id = ?').run(photo, playerId);
+    const sanitized = sanitizePlayerPhoto(photo);
+    if (!sanitized.ok || !sanitized.photo) {
+      return res.status(400).json({ error: sanitized.error || 'Valid profile photo is required.' });
+    }
+
+    db.prepare('UPDATE players SET photo = ? WHERE id = ?').run(sanitized.photo, playerId);
 
     // Audit log
     try {
       const logId = 'log_' + Date.now();
       db.prepare(`
-        INSERT INTO audit_logs (id, action, entity_type, entity_id, details, timestamp)
-        VALUES (?, 'PLAYER_PHOTO_SELF_UPDATED', 'PLAYER', ?, ?, ?)
-      `).run(logId, playerId, `Player ${player.full_name} updated their profile photo via self-check portal`, new Date().toISOString());
+        INSERT INTO audit_logs (id, auction_id, user_id, user_name, action, details, timestamp)
+        VALUES (?, 'auc_default', ?, ?, 'PLAYER_PHOTO_SELF_UPDATED', ?, ?)
+      `).run(logId, playerId, player.full_name, `Player ${player.full_name} updated their profile photo via self-check portal`, new Date().toISOString());
     } catch (e) {}
 
     return res.json({
       success: true,
       message: 'Profile photo updated successfully!',
-      photo
+      photo: sanitized.photo
     });
   } catch (err: any) {
     console.error('Self photo update error:', err);
     return res.status(500).json({ error: 'Server error updating profile photo' });
+  }
+});
+
+// GET direct binary player photo endpoint with HTTP caching
+router.get('/:id/photo', (req, res) => {
+  try {
+    const row = db.prepare('SELECT photo FROM players WHERE id = ?').get(req.params.id) as any;
+    const sanitized = sanitizePlayerPhoto(row?.photo);
+    if (!sanitized.ok || !sanitized.photo) {
+      return res.status(404).end();
+    }
+
+    if (sanitized.photo.startsWith('data:image/')) {
+      const match = sanitized.photo.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+      if (!match) return res.status(404).end();
+      const buf = Buffer.from(match[2], 'base64');
+      res.setHeader('Content-Type', match[1]);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.send(buf);
+    }
+
+    return res.redirect(sanitized.photo);
+  } catch {
+    return res.status(404).end();
   }
 });
 
@@ -453,7 +486,19 @@ router.post('/register', (req, res) => {
       return res.status(400).json({ error: 'Email ID is required.' });
     }
 
-    if (!photo || !photo.trim()) {
+    const allowEmptyPhoto = req.body.allowEmptyPhoto === true;
+    if (!allowEmptyPhoto && (!photo || !photo.trim())) {
+      return res.status(400).json({ error: 'Player photo upload is mandatory. Please provide a photo.' });
+    }
+
+    let cleanPhoto = '';
+    if (photo && photo.trim()) {
+      const sanitized = sanitizePlayerPhoto(photo);
+      if (!sanitized.ok) {
+        return res.status(400).json({ error: sanitized.error || 'Please upload a valid JPEG, PNG, or WEBP photo.' });
+      }
+      cleanPhoto = sanitized.photo;
+    } else if (!allowEmptyPhoto) {
       return res.status(400).json({ error: 'Player photo upload is mandatory. Please provide a photo.' });
     }
 
@@ -478,7 +523,7 @@ router.post('/register', (req, res) => {
         INSERT INTO players (id, full_name, photo, mobile, email, date_of_birth, age, playing_role, batting_style, bowling_style, is_overseas, experience, previous_team, player_bio, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        playerId, fullName, photo || '', mobile || '', cleanEmail,
+        playerId, fullName, cleanPhoto, mobile || '', cleanEmail,
         dateOfBirth || null, age || null, playingRole,
         battingStyle || 'Right Hand Bat', bowlingStyle || 'Right Arm Medium',
         isOverseas ? 1 : 0, experience || '', previousTeam || '', playerBio || '', now
@@ -545,6 +590,14 @@ router.put('/:id', (req, res) => {
     }
 
     const cleanEmail = email ? email.trim().toLowerCase() : player.email;
+    let nextPhoto: string | null = null;
+    if (photo !== undefined) {
+      const sanitized = sanitizePlayerPhoto(photo);
+      if (!sanitized.ok) {
+        return res.status(400).json({ error: sanitized.error || 'Invalid photo format.' });
+      }
+      nextPhoto = sanitized.photo;
+    }
 
     const updateTx = db.transaction(() => {
       db.prepare(`
@@ -555,7 +608,7 @@ router.put('/:id', (req, res) => {
             playing_role = COALESCE(?, playing_role),
             photo = COALESCE(?, photo)
         WHERE id = ?
-      `).run(fullName, cleanEmail, mobile, playingRole, photo, req.params.id);
+      `).run(fullName, cleanEmail, mobile, playingRole, nextPhoto, req.params.id);
 
       if (basePrice !== undefined || categoryId !== undefined) {
         db.prepare(`

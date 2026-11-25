@@ -3,7 +3,9 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
+import { compressPlayerImage } from '../../utils/imageUtils';
 import {
   Users,
   UserPlus,
@@ -60,49 +62,18 @@ export const PlayersPage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageFile = (file: File) => {
-    const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
-    if (file.size > MAX_SIZE_BYTES) {
-      setFormError(`Image size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 20MB limit. Please choose a smaller photo.`);
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
-      setFormError('Please select a valid image file (JPEG, PNG, WEBP).');
-      return;
-    }
+  const handleImageFile = async (file: File) => {
     setFormError(null);
-    setPhotoFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 400;
-        let width = img.width;
-        let height = img.height;
-        if (width > height && width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.8);
-          setPhoto(compressed);
-        } else {
-          setPhoto(reader.result as string);
-        }
-      };
-      img.onerror = () => setPhoto(reader.result as string);
-      img.src = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressPlayerImage(file, { maxDim: 400, quality: 0.8 });
+      setPhotoFileName(file.name);
+      setPhoto(compressed);
+    } catch (err: any) {
+      setPhoto('');
+      setPhotoFileName('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFormError(err.message || 'Please select a valid JPEG, PNG, or WEBP photo.');
+    }
   };
 
   // Share link feedback
@@ -124,49 +95,15 @@ export const PlayersPage: React.FC = () => {
   const quickPhotoInputRef = useRef<HTMLInputElement>(null);
   const [quickPhotoTargetPlayer, setQuickPhotoTargetPlayer] = useState<any>(null);
 
-  const handleEditImageFile = (file: File) => {
-    const MAX_SIZE_BYTES = 20 * 1024 * 1024;
-    if (file.size > MAX_SIZE_BYTES) {
-      setEditError('Image size exceeds 20MB limit. Please choose a smaller photo.');
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
-      setEditError('Please select a valid image file (JPEG, PNG, WEBP).');
-      return;
-    }
+  const handleEditImageFile = async (file: File) => {
     setEditError(null);
-    setEditPhotoFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 400;
-        let width = img.width;
-        let height = img.height;
-        if (width > height && width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.8);
-          setEditPhoto(compressed);
-        } else {
-          setEditPhoto(reader.result as string);
-        }
-      };
-      img.onerror = () => setEditPhoto(reader.result as string);
-      img.src = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressPlayerImage(file, { maxDim: 400, quality: 0.8 });
+      setEditPhotoFileName(file.name);
+      setEditPhoto(compressed);
+    } catch (err: any) {
+      setEditError(err.message || 'Please select a valid JPEG, PNG, or WEBP photo.');
+    }
   };
 
   const triggerQuickPhoto = (player: any) => {
@@ -184,53 +121,31 @@ export const PlayersPage: React.FC = () => {
     const targetId = quickPhotoTargetPlayer.id || quickPhotoTargetPlayer.player_id;
     const playerName = quickPhotoTargetPlayer.full_name;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 400;
-        let width = img.width;
-        let height = img.height;
-        if (width > height && width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        const compressed = ctx ? canvas.toDataURL('image/jpeg', 0.8) : (reader.result as string);
+    try {
+      setActionLoadingId(targetId);
+      const compressed = await compressPlayerImage(file, { maxDim: 400, quality: 0.8 });
+      const res = await fetch(`/api/players/${targetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo: compressed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to update photo');
 
-        try {
-          setActionLoadingId(targetId);
-          const res = await fetch(`/api/players/${targetId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ photo: compressed }),
-          });
-          if (!res.ok) throw new Error('Failed to update photo');
-
-          setPlayers((prev) =>
-            prev.map((p) =>
-              (p.id === targetId || p.player_id === targetId) ? { ...p, photo: compressed } : p
-            )
-          );
-          setActionFeedback({ type: 'success', message: `Photo updated successfully for ${playerName}!` });
-          setTimeout(() => setActionFeedback(null), 3500);
-        } catch (err: any) {
-          setActionFeedback({ type: 'error', message: err.message || 'Error updating photo' });
-          setTimeout(() => setActionFeedback(null), 3500);
-        } finally {
-          setActionLoadingId(null);
-          setQuickPhotoTargetPlayer(null);
-        }
-      };
-      img.src = ev.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+      setPlayers((prev) =>
+        prev.map((p) =>
+          (p.id === targetId || p.player_id === targetId) ? { ...p, photo: compressed } : p
+        )
+      );
+      setActionFeedback({ type: 'success', message: `Photo updated successfully for ${playerName}!` });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } catch (err: any) {
+      setActionFeedback({ type: 'error', message: err.message || 'Error updating photo' });
+      setTimeout(() => setActionFeedback(null), 3500);
+    } finally {
+      setActionLoadingId(null);
+      setQuickPhotoTargetPlayer(null);
+    }
   };
 
   const fetchPlayers = async (page = currentPage, limit = pageSize) => {
@@ -337,7 +252,8 @@ export const PlayersPage: React.FC = () => {
           fullName: fullName.trim(),
           email: cleanEmail,
           mobile: mobile.trim(),
-          photo: photo.trim() || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop',
+          photo: photo.trim(),
+          allowEmptyPhoto: true,
           playingRole: category.toUpperCase().replace('-', '_'),
           basePrice: Number(basePrice) || 500,
           auctionId,
@@ -713,15 +629,12 @@ export const PlayersPage: React.FC = () => {
                         className="relative group cursor-pointer shrink-0"
                         title="Click to change player photo"
                       >
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 group-hover:border-blue-500 transition-colors">
-                          {p.photo ? (
-                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-blue-50 text-blue-600">
-                              {p.full_name ? p.full_name.charAt(0) : 'P'}
-                            </div>
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={p.photo}
+                          name={p.full_name}
+                          className="w-12 h-12 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 group-hover:border-blue-500 transition-colors"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-blue-600 bg-blue-50"
+                        />
                         <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
                           <Camera className="w-4 h-4" />
                         </div>
@@ -919,15 +832,12 @@ export const PlayersPage: React.FC = () => {
                             className="relative group cursor-pointer shrink-0"
                             title="Click to change player photo"
                           >
-                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 group-hover:border-blue-500 transition-colors">
-                              {p.photo ? (
-                                <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-blue-50 text-blue-600">
-                                  {p.full_name ? p.full_name.charAt(0) : 'P'}
-                                </div>
-                              )}
-                            </div>
+                            <PlayerAvatar
+                              src={p.photo}
+                              name={p.full_name}
+                              className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 group-hover:border-blue-500 transition-colors"
+                              fallbackClassName="w-full h-full flex items-center justify-center font-bold text-blue-600 bg-blue-50"
+                            />
                             <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
                               <Camera className="w-3.5 h-3.5" />
                             </div>
@@ -1168,15 +1078,14 @@ export const PlayersPage: React.FC = () => {
               />
 
               <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-white border border-slate-300 shrink-0">
-                  {photo ? (
-                    <img src={photo} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100">
-                      <User className="w-6 h-6 text-slate-400" />
-                    </div>
-                  )}
-                </div>
+                <PlayerAvatar
+                  src={photo}
+                  name={fullName}
+                  iconFallback
+                  className="w-12 h-12 rounded-full overflow-hidden bg-white border border-slate-300 shrink-0"
+                  fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                  iconClassName="w-6 h-6 text-slate-400"
+                />
 
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
@@ -1402,15 +1311,14 @@ export const PlayersPage: React.FC = () => {
                 className="hidden"
               />
               <div className="flex items-center gap-3.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="w-14 h-14 rounded-full overflow-hidden bg-white border-2 border-slate-300 shrink-0 relative group">
-                  {editPhoto ? (
-                    <img src={editPhoto} alt="Player" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100">
-                      <User className="w-6 h-6 text-slate-400" />
-                    </div>
-                  )}
-                </div>
+                <PlayerAvatar
+                  src={editPhoto}
+                  name={editName}
+                  iconFallback
+                  className="w-14 h-14 rounded-full overflow-hidden bg-white border-2 border-slate-300 shrink-0 relative group"
+                  fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                  iconClassName="w-6 h-6 text-slate-400"
+                />
 
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">

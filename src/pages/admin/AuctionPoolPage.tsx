@@ -3,6 +3,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 import {
   Layers,
@@ -170,15 +171,12 @@ export const AuctionPoolPage: React.FC = () => {
               <div key={p.id} className="p-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                      {p.photo ? (
-                        <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                          {p.full_name?.charAt(0) || 'P'}
-                        </div>
-                      )}
-                    </div>
+                    <PlayerAvatar
+                      src={p.photo}
+                      name={p.full_name}
+                      className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                      fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                    />
                     <div className="min-w-0">
                       <div className="font-bold text-slate-900 text-xs truncate">{p.full_name}</div>
                       <span className="text-[10px] text-slate-400 block truncate">
@@ -256,15 +254,12 @@ export const AuctionPoolPage: React.FC = () => {
                     #{p.current_order}
                   </td>
                   <td className="px-6 py-3 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                      {p.photo ? (
-                        <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                          {p.full_name.charAt(0)}
-                        </div>
-                      )}
-                    </div>
+                    <PlayerAvatar
+                      src={p.photo}
+                      name={p.full_name}
+                      className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                      fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                    />
                     <div>
                       <div className="font-bold text-slate-900">{p.full_name}</div>
                       <span className="text-[10px] text-slate-400">

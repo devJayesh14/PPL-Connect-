@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 import { CheckCircle2, XCircle, RotateCcw, Search } from 'lucide-react';
 
@@ -120,15 +121,12 @@ export const SoldUnsoldPage: React.FC<{ initialTab?: 'sold' | 'unsold' }> = ({ i
                   <div key={p.id} className="p-4 space-y-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                          {p.photo ? (
-                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                              {p.full_name?.charAt(0) || 'P'}
-                            </div>
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={p.photo}
+                          name={p.full_name}
+                          className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                        />
                         <div className="min-w-0">
                           <div className="font-bold text-slate-900 text-xs truncate">{p.full_name}</div>
                           <span className="text-[10px] text-slate-400 block truncate">
@@ -169,15 +167,12 @@ export const SoldUnsoldPage: React.FC<{ initialTab?: 'sold' | 'unsold' }> = ({ i
                   {data?.soldPlayers?.map((p: any) => (
                     <tr key={p.id} className="hover:bg-slate-50">
                       <td className="px-6 py-3.5 font-bold text-slate-900 flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0">
-                          {p.photo ? (
-                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                              {p.full_name.charAt(0)}
-                            </div>
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={p.photo}
+                          name={p.full_name}
+                          className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                        />
                         <span>{p.full_name}</span>
                       </td>
                       <td className="px-6 py-3.5 text-slate-600">{p.playing_role}</td>
@@ -214,15 +209,12 @@ export const SoldUnsoldPage: React.FC<{ initialTab?: 'sold' | 'unsold' }> = ({ i
                   <div key={p.id} className="p-4 space-y-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                          {p.photo ? (
-                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                              {p.full_name?.charAt(0) || 'P'}
-                            </div>
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={p.photo}
+                          name={p.full_name}
+                          className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                        />
                         <div className="min-w-0">
                           <div className="font-bold text-slate-900 text-xs truncate">{p.full_name}</div>
                           <span className="text-[10px] text-slate-400 block truncate">
@@ -277,15 +269,12 @@ export const SoldUnsoldPage: React.FC<{ initialTab?: 'sold' | 'unsold' }> = ({ i
                     data?.unsoldPlayers?.map((p: any) => (
                       <tr key={p.id} className="hover:bg-slate-50">
                         <td className="px-6 py-3.5 font-bold text-slate-900 flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0">
-                            {p.photo ? (
-                              <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                                {p.full_name.charAt(0)}
-                              </div>
-                            )}
-                          </div>
+                          <PlayerAvatar
+                            src={p.photo}
+                            name={p.full_name}
+                            className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0"
+                            fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                          />
                           <span>{p.full_name}</span>
                         </td>
                         <td className="px-6 py-3.5 text-slate-600">{p.playing_role}</td>

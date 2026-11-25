@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
+import { compressPlayerImage } from '../../utils/imageUtils';
 import {
   User,
   CheckCircle2,
@@ -34,56 +36,19 @@ export const PlayerRegistrationPage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle 20MB Max Image Upload
-  const handleImageFile = (file: File) => {
-    const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
-
-    if (file.size > MAX_SIZE_BYTES) {
-      setError(`Image size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 20MB limit. Please choose a smaller photo.`);
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      setError('Please select a valid image file (JPEG, PNG, WEBP).');
-      return;
-    }
-
+  // Handle 20MB Max Image Upload with strict compression & format check
+  const handleImageFile = async (file: File) => {
     setError(null);
-    setPhotoFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 400;
-        let width = img.width;
-        let height = img.height;
-        if (width > height && width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.8);
-          setPhoto(compressed);
-        } else {
-          setPhoto(reader.result as string);
-        }
-      };
-      img.onerror = () => setPhoto(reader.result as string);
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = () => {
-      setError('Failed to read image file.');
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressPlayerImage(file, { maxDim: 400, quality: 0.8 });
+      setPhotoFileName(file.name);
+      setPhoto(compressed);
+    } catch (err: any) {
+      setPhoto('');
+      setPhotoFileName('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setError(err.message || 'Please select a valid JPEG, PNG, or WEBP photo.');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,17 +304,16 @@ export const PlayerRegistrationPage: React.FC = () => {
             <div className={`flex items-center gap-3.5 p-3 rounded-xl border transition-colors ${
               !photo ? 'bg-amber-50/40 border-amber-200' : 'bg-slate-50 border-slate-200'
             }`}>
-              <div className={`w-14 h-14 rounded-full overflow-hidden bg-white shrink-0 relative group border-2 ${
-                !photo ? 'border-amber-300' : 'border-emerald-500'
-              }`}>
-                {photo ? (
-                  <img src={photo} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-bold text-amber-500 bg-amber-50">
-                    <User className="w-7 h-7 text-amber-400" />
-                  </div>
-                )}
-              </div>
+              <PlayerAvatar
+                src={photo}
+                name={fullName}
+                iconFallback
+                className={`w-14 h-14 rounded-full overflow-hidden bg-white shrink-0 relative group border-2 ${
+                  !photo ? 'border-amber-300' : 'border-emerald-500'
+                }`}
+                fallbackClassName="w-full h-full flex items-center justify-center font-bold text-amber-500 bg-amber-50"
+                iconClassName="w-7 h-7 text-amber-400"
+              />
 
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-2">

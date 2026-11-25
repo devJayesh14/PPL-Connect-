@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'chore: remove all dummy teams, captains, and test auction data; keep only real data',
+      message: 'fix: reliable player photo rendering, compression, HEIC guard, PlayerAvatar fallback & /photo endpoint',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

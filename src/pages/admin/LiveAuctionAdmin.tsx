@@ -9,6 +9,7 @@ import { LiveBidFeed } from '../../components/auction/LiveBidFeed';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 import confetti from 'canvas-confetti';
 import {
@@ -787,15 +788,12 @@ export const LiveAuctionAdmin: React.FC = () => {
 
             {/* Player Quick Info */}
             <div className="flex items-center gap-3 p-3 bg-blue-50/70 border border-blue-100 rounded-lg">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-white border border-blue-200 shrink-0">
-                {roomState.currentPlayer.photo ? (
-                  <img src={roomState.currentPlayer.photo} alt={roomState.currentPlayer.fullName} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-bold text-blue-600">
-                    {roomState.currentPlayer.fullName.charAt(0)}
-                  </div>
-                )}
-              </div>
+              <PlayerAvatar
+                src={roomState.currentPlayer.photo}
+                name={roomState.currentPlayer.fullName}
+                className="w-12 h-12 rounded-full overflow-hidden bg-white border border-blue-200 shrink-0"
+                fallbackClassName="w-full h-full flex items-center justify-center font-bold text-blue-600 bg-blue-50"
+              />
               <div>
                 <h4 className="text-sm font-extrabold text-slate-900">{roomState.currentPlayer.fullName}</h4>
                 <p className="text-xs text-blue-700 font-semibold">
@@ -892,15 +890,12 @@ export const LiveAuctionAdmin: React.FC = () => {
                   className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-lg transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                      {player.photo ? (
-                        <img src={player.photo} alt={player.full_name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-400">
-                          {player.full_name?.charAt(0) || 'P'}
-                        </div>
-                      )}
-                    </div>
+                    <PlayerAvatar
+                      src={player.photo}
+                      name={player.full_name}
+                      className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                      fallbackClassName="w-full h-full flex items-center justify-center text-xs font-bold text-slate-400 bg-slate-100"
+                    />
                     <div>
                       <h4 className="text-xs font-bold text-slate-900">{player.full_name}</h4>
                       <p className="text-[11px] text-slate-500">

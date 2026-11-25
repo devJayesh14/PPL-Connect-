@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 import { Lock, Unlock, CheckCircle2, AlertCircle, Shield, RefreshCw, Mail, Copy, Clock, XCircle, Search, User, X } from 'lucide-react';
 
@@ -268,15 +269,12 @@ export const CaptainRetentionPage: React.FC = () => {
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-white shrink-0 border border-slate-200">
-                  {currentRetention.photo ? (
-                    <img src={currentRetention.photo} alt={currentRetention.full_name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-bold text-slate-500 bg-blue-50">
-                      {currentRetention.full_name?.charAt(0) || 'P'}
-                    </div>
-                  )}
-                </div>
+                <PlayerAvatar
+                  src={currentRetention.photo}
+                  name={currentRetention.full_name}
+                  className="w-12 h-12 rounded-full overflow-hidden bg-white shrink-0 border border-slate-200"
+                  fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-500 bg-blue-50"
+                />
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">{currentRetention.full_name}</h4>
                   <div className="flex items-center gap-2 mt-0.5">
@@ -453,13 +451,12 @@ export const CaptainRetentionPage: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 shrink-0 border border-slate-200 flex items-center justify-center font-bold text-xs text-slate-600">
-                          {p.photo ? (
-                            <img src={p.photo} alt={p.full_name} className="w-full h-full object-cover" />
-                          ) : (
-                            p.full_name?.charAt(0) || 'P'
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={p.photo}
+                          name={p.full_name}
+                          className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-xs text-slate-600 bg-slate-100"
+                        />
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-slate-900">{p.full_name}</span>

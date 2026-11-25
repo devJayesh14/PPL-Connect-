@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
+import { compressPlayerImage } from '../../utils/imageUtils';
 import { Trophy, CheckCircle2, AlertCircle, User, Upload, X } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -56,6 +58,11 @@ export const LoginPage: React.FC = () => {
 
     try {
       if (registerRole === 'PLAYER') {
+        if (!regPhoto.trim()) {
+          setRegError('Player photo upload is mandatory. Please select your photo.');
+          setRegLoading(false);
+          return;
+        }
         const res = await fetch('/api/auth/register-player', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -64,7 +71,7 @@ export const LoginPage: React.FC = () => {
             email: regEmail,
             mobile: regMobile,
             password: regPassword || 'admin123',
-            photo: regPhoto || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&h=200&fit=crop',
+            photo: regPhoto.trim(),
             category: regCategory,
             auctionId: 'auc_default',
           }),
@@ -356,30 +363,28 @@ export const LoginPage: React.FC = () => {
                         type="file"
                         ref={playerFileInputRef}
                         accept="image/*"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          if (file.size > 20 * 1024 * 1024) {
-                            setRegError(`Image size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds 20MB.`);
-                            return;
-                          }
                           setRegError(null);
-                          const reader = new FileReader();
-                          reader.onload = () => setRegPhoto(reader.result as string);
-                          reader.readAsDataURL(file);
+                          try {
+                            const compressed = await compressPlayerImage(file, { maxDim: 400, quality: 0.8 });
+                            setRegPhoto(compressed);
+                          } catch (err: any) {
+                            setRegError(err.message || 'Invalid image file. Please select JPEG, PNG, or WEBP.');
+                          }
                         }}
                         className="hidden"
                       />
                       <div className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white border border-slate-300 shrink-0">
-                          {regPhoto ? (
-                            <img src={regPhoto} alt="Preview" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100">
-                              <User className="w-5 h-5 text-slate-400" />
-                            </div>
-                          )}
-                        </div>
+                        <PlayerAvatar
+                          src={regPhoto}
+                          name={regName}
+                          iconFallback
+                          className="w-10 h-10 rounded-full overflow-hidden bg-white border border-slate-300 shrink-0"
+                          fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                          iconClassName="w-5 h-5 text-slate-400"
+                        />
                         <div className="flex items-center gap-2">
                           <Button
                             type="button"

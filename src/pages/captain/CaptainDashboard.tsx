@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency, formatCompactCurrency } from '../../utils/formatters';
 import { Shield, Wallet, Users, Radio, Lock, FileSpreadsheet, ArrowRight } from 'lucide-react';
 
@@ -157,15 +158,12 @@ export const CaptainDashboard: React.FC = () => {
                 {squad.map((player: any) => (
                   <tr key={player.player_id} className="hover:bg-slate-50/70">
                     <td className="px-6 py-3.5 flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
-                        {player.photo ? (
-                          <img src={player.photo} alt={player.full_name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                            {player.full_name.charAt(0)}
-                          </div>
-                        )}
-                      </div>
+                      <PlayerAvatar
+                        src={player.photo}
+                        name={player.full_name}
+                        className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200"
+                        fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                      />
                       <span className="font-bold text-slate-900">{player.full_name}</span>
                     </td>
                     <td className="px-6 py-3.5 text-slate-600">{player.playing_role}</td>

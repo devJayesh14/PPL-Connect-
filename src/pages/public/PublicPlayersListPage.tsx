@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Share2, Check, Users, Shield, Sparkles, Filter, RefreshCw, Trophy } from 'lucide-react';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 
 interface PublicPlayer {
@@ -278,18 +279,12 @@ export const PublicPlayersListPage: React.FC = () => {
                     {/* Header: Photo & Role Badge */}
                     <div className="flex items-start gap-3 mb-3">
                       <div className="relative shrink-0">
-                        {player.photo ? (
-                          <img
-                            src={player.photo}
-                            alt={player.full_name}
-                            loading="lazy"
-                            className="w-14 h-14 rounded-full object-cover border-2 border-slate-200 group-hover:border-blue-500 transition-colors"
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-lg flex items-center justify-center border-2 border-slate-200">
-                            {player.full_name?.charAt(0) || 'P'}
-                          </div>
-                        )}
+                        <PlayerAvatar
+                          src={player.photo}
+                          name={player.full_name}
+                          className="w-14 h-14 rounded-full overflow-hidden border-2 border-slate-200 group-hover:border-blue-500 transition-colors"
+                          fallbackClassName="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-lg flex items-center justify-center"
+                        />
                         {player.is_overseas ? (
                           <span className="absolute -bottom-1 -right-1 text-[9px] font-bold bg-amber-500 text-white px-1 rounded shadow">
                             ✈

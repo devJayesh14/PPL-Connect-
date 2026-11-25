@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { PlayerAvatar } from '../../components/common/PlayerAvatar';
 import { formatCurrency } from '../../utils/formatters';
 import { Lock, Shield, CheckCircle2 } from 'lucide-react';
 
@@ -59,15 +60,12 @@ export const RetentionsPage: React.FC = () => {
                     {ret.team_name}
                   </td>
                   <td className="px-6 py-3.5 font-bold text-slate-900 flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0">
-                      {ret.photo ? (
-                        <img src={ret.photo} alt={ret.full_name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center font-bold text-slate-400">
-                          {ret.full_name.charAt(0)}
-                        </div>
-                      )}
-                    </div>
+                    <PlayerAvatar
+                      src={ret.photo}
+                      name={ret.full_name}
+                      className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0"
+                      fallbackClassName="w-full h-full flex items-center justify-center font-bold text-slate-400 bg-slate-100"
+                    />
                     <span>{ret.full_name}</span>
                   </td>
                   <td className="px-6 py-3.5 text-slate-600">{ret.playing_role}</td>
