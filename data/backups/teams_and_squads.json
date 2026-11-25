@@ -8,11 +8,11 @@
     "logo": "",
     "color": "#2563EB",
     "initial_purse": 20000,
-    "spent_purse": 0,
-    "remaining_purse": 20000,
+    "spent_purse": 2000,
+    "remaining_purse": 19000,
     "captain_id": "cap_1795538420079",
     "created_at": "2026-11-24T16:40:20.079Z",
-    "squad_count": 1,
+    "squad_count": 3,
     "squad": [
       {
         "player_id": "ply_1795358537433_l9sl3",
@@ -20,6 +20,20 @@
         "acquisition_type": "RETENTION",
         "price": 0,
         "joined_at": "2026-11-24T16:41:01.528Z"
+      },
+      {
+        "player_id": "ply_1795357921528_htw70",
+        "name": "Harsh Tailor",
+        "acquisition_type": "AUCTION",
+        "price": 1000,
+        "joined_at": "2026-11-24T20:22:38.134Z"
+      },
+      {
+        "player_id": "ply_1795358042595_1t1le",
+        "name": "Sagar Gangle",
+        "acquisition_type": "AUCTION",
+        "price": 1000,
+        "joined_at": "2026-11-24T20:23:42.667Z"
       }
     ]
   }

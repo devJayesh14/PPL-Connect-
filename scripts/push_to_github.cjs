@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: remove syntax error in auctionEngine and add fallback auction_configs for callNextPlayer',
+      message: 'feat: recover & merge all 50 registered players, sync central Neon DB, enable self-service photo upload with warnings',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',
