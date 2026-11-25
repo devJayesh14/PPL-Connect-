@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'fix: reliable player photo rendering, compression, HEIC guard, PlayerAvatar fallback & /photo endpoint',
+      message: 'feat: fix live auction player sync across serverless instances and add broadcast SOLD celebration animation',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

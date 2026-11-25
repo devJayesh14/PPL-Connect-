@@ -60,15 +60,49 @@ class AuctionEngine {
   }
 
   public getRoomState(auctionId: string): AuctionRoomState {
-    let state = this.rooms.get(auctionId);
-    if (!state) {
-      state = this.initializeRoomState(auctionId);
-      this.rooms.set(auctionId, state);
+    const fresh = this.initializeRoomState(auctionId);
+    const cached = this.rooms.get(auctionId);
+
+    if (cached) {
+      // If SQLite says auction is COMPLETED, always return COMPLETED
+      if (fresh.status === 'COMPLETED') {
+        this.stopTimer(auctionId);
+        this.rooms.set(auctionId, fresh);
+        return fresh;
+      }
+
+      // If same player is actively IN_AUCTION, preserve live timer & in-memory state while syncing latest DB bids/counts
+      if (fresh.currentPlayer && cached.currentPlayer && fresh.currentPlayer.playerId === cached.currentPlayer.playerId) {
+        cached.currentPlayer = fresh.currentPlayer;
+        cached.totalPendingPlayers = fresh.totalPendingPlayers;
+        cached.totalSoldPlayers = fresh.totalSoldPlayers;
+        cached.totalUnsoldPlayers = fresh.totalUnsoldPlayers;
+        if (fresh.currentBid > cached.currentBid) {
+          cached.currentBid = fresh.currentBid;
+          cached.nextBidAmount = fresh.nextBidAmount;
+        }
+        if (fresh.bidHistory.length >= cached.bidHistory.length) {
+          cached.bidHistory = fresh.bidHistory;
+          if (fresh.highestBidder) cached.highestBidder = fresh.highestBidder;
+        }
+        return cached;
+      }
+
+      // If no active IN_AUCTION player in DB right now, preserve recent SOLD/UNSOLD showcase state until next call
+      if (!fresh.currentPlayer && (cached.status === 'SOLD' || cached.status === 'UNSOLD') && cached.currentPlayer) {
+        cached.totalPendingPlayers = fresh.totalPendingPlayers;
+        cached.totalSoldPlayers = fresh.totalSoldPlayers;
+        cached.totalUnsoldPlayers = fresh.totalUnsoldPlayers;
+        return cached;
+      }
     }
-    return state;
+
+    this.rooms.set(auctionId, fresh);
+    return fresh;
   }
 
   private initializeRoomState(auctionId: string): AuctionRoomState {
+    const auctionRow = db.prepare('SELECT status FROM auctions WHERE id = ?').get(auctionId) as any;
     const counts = db.prepare(`
       SELECT 
         SUM(CASE WHEN ap.status = 'PENDING' AND ap.player_id NOT IN (SELECT player_id FROM team_retentions WHERE status != 'REJECTED') AND ap.player_id NOT IN (SELECT player_id FROM team_squads) AND ap.player_id NOT IN (SELECT p2.id FROM players p2 JOIN captains c ON (c.player_id = p2.id OR (c.email != '' AND LOWER(c.email) = LOWER(p2.email)) OR (c.mobile != '' AND c.mobile = p2.mobile) OR LOWER(c.name) = LOWER(p2.full_name)) WHERE c.status != 'REJECTED') THEN 1 ELSE 0 END) as pending,
@@ -78,6 +112,27 @@ class AuctionEngine {
       FROM auction_players ap
       WHERE ap.auction_id = ?
     `).get(auctionId) as any;
+
+    const config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
+    const bidIncrement = config ? config.bid_increment : 100;
+    const timerDefault = config ? config.bid_timer_seconds : 30;
+
+    if (auctionRow?.status === 'COMPLETED') {
+      return {
+        auctionId,
+        status: 'COMPLETED',
+        currentPlayer: null,
+        currentBid: 0,
+        highestBidder: null,
+        nextBidAmount: 0,
+        bidHistory: [],
+        timerSeconds: 0,
+        isTimerRunning: false,
+        totalPendingPlayers: counts?.pending || 0,
+        totalSoldPlayers: counts?.sold || 0,
+        totalUnsoldPlayers: counts?.unsold || 0,
+      };
+    }
 
     // Check if there is already an active player in auction (excluding sold/retained/captains)
     const activePlayerRow = db.prepare(`
@@ -102,14 +157,13 @@ class AuctionEngine {
 
     let currentPlayer: LivePlayerState | null = null;
     let currentBid = 0;
-    let highestBidder = null;
+    let highestBidder: AuctionRoomState['highestBidder'] = null;
     let bidHistory: LiveBid[] = [];
     let nextBidAmount = 0;
-
-    const config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
-    const bidIncrement = config ? config.bid_increment : 5000;
+    let derivedStatus: AuctionRoomState['status'] = 'IDLE';
 
     if (activePlayerRow) {
+      derivedStatus = 'BIDDING';
       currentPlayer = {
         auctionPlayerId: activePlayerRow.id,
         playerId: activePlayerRow.player_id,
@@ -137,6 +191,8 @@ class AuctionEngine {
         ORDER BY b.bid_amount ASC
       `).all(auctionId, activePlayerRow.player_id) as any[];
 
+      const persistedBid = Number(activePlayerRow.final_bid) || 0;
+
       if (bids.length > 0) {
         bidHistory = bids.map(b => ({
           id: b.id,
@@ -149,7 +205,7 @@ class AuctionEngine {
           timestamp: b.timestamp,
         }));
         const lastBid = bids[bids.length - 1];
-        currentBid = lastBid.bid_amount;
+        currentBid = Math.max(lastBid.bid_amount, persistedBid);
         highestBidder = {
           teamId: lastBid.team_id,
           teamName: lastBid.team_name,
@@ -158,16 +214,60 @@ class AuctionEngine {
         };
         nextBidAmount = currentBid + bidIncrement;
       } else {
-        currentBid = activePlayerRow.base_price;
-        nextBidAmount = activePlayerRow.base_price;
+        currentBid = Math.max(activePlayerRow.base_price, persistedBid);
+        nextBidAmount = currentBid > activePlayerRow.base_price ? currentBid + bidIncrement : activePlayerRow.base_price;
       }
-    }
+    } else {
+      // Cross-instance serverless support: if a player was SOLD within the last 12 seconds, show SOLD state
+      try {
+        const recentSold = db.prepare(`
+          SELECT ar.final_bid, ar.timestamp, p.*, ap.id as ap_id, ap.base_price, ap.current_order, pc.name as category_name,
+                 t.id as team_id, t.name as team_name, t.logo as team_logo, t.color as team_color
+          FROM auction_results ar
+          JOIN players p ON ar.player_id = p.id
+          JOIN teams t ON ar.winning_team_id = t.id
+          LEFT JOIN auction_players ap ON ap.auction_id = ar.auction_id AND ap.player_id = ar.player_id
+          LEFT JOIN player_categories pc ON ap.category_id = pc.id
+          WHERE ar.auction_id = ?
+          ORDER BY ar.timestamp DESC
+          LIMIT 1
+        `).get(auctionId) as any;
 
-    const timerDefault = config ? config.bid_timer_seconds : 30;
+        if (recentSold && recentSold.timestamp) {
+          const ageMs = Date.now() - new Date(recentSold.timestamp).getTime();
+          if (ageMs >= 0 && ageMs < 12000) {
+            derivedStatus = 'SOLD';
+            currentPlayer = {
+              auctionPlayerId: recentSold.ap_id || '',
+              playerId: recentSold.id,
+              fullName: recentSold.full_name,
+              photo: recentSold.photo,
+              playingRole: recentSold.playing_role,
+              battingStyle: recentSold.batting_style,
+              bowlingStyle: recentSold.bowling_style,
+              categoryName: recentSold.category_name,
+              basePrice: recentSold.base_price || 500,
+              currentOrder: recentSold.current_order || 1,
+              isOverseas: recentSold.is_overseas === 1,
+              age: recentSold.age,
+              previousTeam: recentSold.previous_team,
+              experience: recentSold.experience,
+            };
+            currentBid = recentSold.final_bid;
+            highestBidder = {
+              teamId: recentSold.team_id,
+              teamName: recentSold.team_name,
+              teamLogo: recentSold.team_logo,
+              teamColor: recentSold.team_color,
+            };
+          }
+        }
+      } catch (e) {}
+    }
 
     return {
       auctionId,
-      status: currentPlayer ? 'BIDDING' : 'IDLE',
+      status: derivedStatus,
       currentPlayer,
       currentBid,
       highestBidder,
@@ -188,7 +288,7 @@ class AuctionEngine {
   }
 
   // 1. Start Auction / Call Next Player
-  public callNextPlayer(auctionId: string, specificPlayerId?: string): { success: boolean; message?: string } {
+  public callNextPlayer(auctionId: string, specificPlayerId?: string): { success: boolean; message?: string; state?: AuctionRoomState } {
     let config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
     if (!config) {
       try {
@@ -337,8 +437,8 @@ class AuctionEngine {
       return { success: false, message: 'No more players available in the auction pool.' };
     }
 
-    // Set status to IN_AUCTION
-    db.prepare(`UPDATE auction_players SET status = 'IN_AUCTION' WHERE id = ?`).run(nextRow.id);
+    // Set status to IN_AUCTION and reset any leftover bid state
+    db.prepare(`UPDATE auction_players SET status = 'IN_AUCTION', final_bid = NULL, winning_team_id = NULL WHERE id = ?`).run(nextRow.id);
 
     // Stop existing timer
     this.stopTimer(auctionId);
@@ -374,7 +474,7 @@ class AuctionEngine {
     this.startTimer(auctionId);
     this.broadcast(auctionId);
 
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // 2. Place Bid (Server-validated & Race-condition safe)
@@ -383,7 +483,7 @@ class AuctionEngine {
     teamId?: string,
     captainId?: string,
     customBidAmount?: number
-  ): { success: boolean; message?: string } {
+  ): { success: boolean; message?: string; state?: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
 
     if (room.status !== 'BIDDING' || !room.currentPlayer) {
@@ -425,6 +525,11 @@ class AuctionEngine {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(bidId, auctionId, room.currentPlayer.playerId, team.id, captainId || null, proposedBid, timestamp);
     }
+
+    // Always persist latest bid on auction_players so serverless instances stay synced even on teamless stage increments
+    db.prepare(`
+      UPDATE auction_players SET final_bid = ? WHERE auction_id = ? AND player_id = ?
+    `).run(proposedBid, auctionId, room.currentPlayer.playerId);
 
     const config = db.prepare('SELECT * FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
     let increment = config?.bid_increment || 100;
@@ -471,11 +576,11 @@ class AuctionEngine {
     );
 
     this.broadcast(auctionId);
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // 3. Mark Player SOLD (Section 18) - Supports custom winning team selection
-  public markSold(auctionId: string, targetTeamId?: string, soldAmount?: number): { success: boolean; message?: string } {
+  public markSold(auctionId: string, targetTeamId?: string, soldAmount?: number): { success: boolean; message?: string; soldData?: any; state?: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
 
     if (!room.currentPlayer) {
@@ -549,9 +654,22 @@ class AuctionEngine {
 
     this.stopTimer(auctionId);
 
+    const winningTeam = {
+      teamId: team.id,
+      teamName: team.name,
+      teamLogo: team.logo || '',
+      teamColor: team.color || '#2563EB',
+    };
+
+    room.status = 'SOLD';
+    room.currentBid = finalAmount;
+    room.highestBidder = winningTeam;
+    room.totalSoldPlayers += 1;
+    room.totalPendingPlayers = Math.max(0, room.totalPendingPlayers - 1);
+
     const soldData = {
       player: room.currentPlayer,
-      winningTeam: room.highestBidder,
+      winningTeam,
       finalAmount,
       timestamp,
     };
@@ -561,21 +679,17 @@ class AuctionEngine {
       'ADMIN',
       'ADMIN',
       'PLAYER_SOLD',
-      `Sold ${room.currentPlayer.fullName} to ${room.highestBidder.teamName} for ₹${finalAmount.toLocaleString('en-IN')}`
+      `Sold ${room.currentPlayer.fullName} to ${team.name} for ₹${finalAmount.toLocaleString('en-IN')}`
     );
-
-    room.status = 'SOLD';
-    room.totalSoldPlayers += 1;
-    room.totalPendingPlayers = Math.max(0, room.totalPendingPlayers - 1);
 
     this.io?.to(`auction:${auctionId}`).emit('PLAYER_SOLD_CELEBRATION', soldData);
     this.broadcast(auctionId);
 
-    return { success: true };
+    return { success: true, soldData, state: room };
   }
 
   // 4. Mark Player UNSOLD (Section 19)
-  public markUnsold(auctionId: string): { success: boolean; message?: string } {
+  public markUnsold(auctionId: string): { success: boolean; message?: string; state?: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
 
     if (!room.currentPlayer) {
@@ -611,11 +725,11 @@ class AuctionEngine {
     this.io?.to(`auction:${auctionId}`).emit('PLAYER_UNSOLD_EVENT', unsoldData);
     this.broadcast(auctionId);
 
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // 5. Skip Player
-  public skipPlayer(auctionId: string): { success: boolean; message?: string } {
+  public skipPlayer(auctionId: string): { success: boolean; message?: string; state?: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
     if (!room.currentPlayer) return { success: false, message: 'No active player to skip.' };
 
@@ -628,7 +742,7 @@ class AuctionEngine {
 
     this.addAuditLog(auctionId, 'ADMIN', 'ADMIN', 'PLAYER_SKIPPED', 'Skipped current player to later in the pool');
     this.broadcast(auctionId);
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // 6. Re-auction Player (Move from Unsold back to Pool)
@@ -667,7 +781,7 @@ class AuctionEngine {
   }
 
   // 7. Undo Last Bid
-  public undoLastBid(auctionId: string): { success: boolean; message?: string } {
+  public undoLastBid(auctionId: string): { success: boolean; message?: string; state?: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
     if (!room.currentPlayer || room.bidHistory.length === 0) {
       return { success: false, message: 'No bids to undo.' };
@@ -679,7 +793,7 @@ class AuctionEngine {
     }
 
     const config = db.prepare('SELECT bid_increment FROM auction_configs WHERE auction_id = ?').get(auctionId) as any;
-    const bidIncrement = config?.bid_increment || 5000;
+    const bidIncrement = config?.bid_increment || 100;
 
     if (room.bidHistory.length > 0) {
       const prevBid = room.bidHistory[room.bidHistory.length - 1];
@@ -691,10 +805,14 @@ class AuctionEngine {
         teamColor: prevBid.teamColor,
       };
       room.nextBidAmount = prevBid.amount + bidIncrement;
+      db.prepare('UPDATE auction_players SET final_bid = ? WHERE auction_id = ? AND player_id = ?')
+        .run(prevBid.amount, auctionId, room.currentPlayer.playerId);
     } else {
       room.currentBid = room.currentPlayer.basePrice;
       room.highestBidder = null;
       room.nextBidAmount = room.currentPlayer.basePrice;
+      db.prepare('UPDATE auction_players SET final_bid = NULL WHERE auction_id = ? AND player_id = ?')
+        .run(auctionId, room.currentPlayer.playerId);
     }
 
     this.addAuditLog(
@@ -706,7 +824,7 @@ class AuctionEngine {
     );
 
     this.broadcast(auctionId);
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // 8. Admin Increase Bid / Custom Bid
@@ -720,28 +838,28 @@ class AuctionEngine {
   }
 
   // 9. Pause / Resume Timer & Auction
-  public pauseAuction(auctionId: string): { success: boolean } {
+  public pauseAuction(auctionId: string): { success: boolean; state: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
     room.isTimerRunning = false;
     room.status = 'PAUSED';
     this.stopTimer(auctionId);
     this.addAuditLog(auctionId, 'ADMIN', 'ADMIN', 'AUCTION_PAUSED', 'Auction paused by admin');
     this.broadcast(auctionId);
-    return { success: true };
+    return { success: true, state: room };
   }
 
-  public resumeAuction(auctionId: string): { success: boolean } {
+  public resumeAuction(auctionId: string): { success: boolean; state: AuctionRoomState } {
     const room = this.getRoomState(auctionId);
     room.isTimerRunning = true;
     room.status = 'BIDDING';
     this.startTimer(auctionId);
     this.addAuditLog(auctionId, 'ADMIN', 'ADMIN', 'AUCTION_RESUMED', 'Auction resumed by admin');
     this.broadcast(auctionId);
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // 10. End Auction
-  public endAuction(auctionId: string): { success: boolean } {
+  public endAuction(auctionId: string): { success: boolean; state: AuctionRoomState } {
     this.stopTimer(auctionId);
     db.prepare(`UPDATE auctions SET status = 'COMPLETED', updated_at = ? WHERE id = ?`).run(new Date().toISOString(), auctionId);
 
@@ -752,7 +870,7 @@ class AuctionEngine {
 
     this.addAuditLog(auctionId, 'ADMIN', 'ADMIN', 'AUCTION_COMPLETED', 'Auction marked as COMPLETED by admin');
     this.broadcast(auctionId);
-    return { success: true };
+    return { success: true, state: room };
   }
 
   // Timer Tick implementation

@@ -46,3 +46,73 @@
 .animate-subtle-pulse {
   animation: subtle-pulse 1.8s infinite ease-in-out;
 }
+
+/* Broadcast SOLD stamp slam & celebration animations */
+@keyframes sold-stamp-slam {
+  0% {
+    opacity: 0;
+    transform: scale(2.8) rotate(-20deg);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(0.92) rotate(-7deg);
+  }
+  85% {
+    transform: scale(1.06) rotate(-5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-6deg);
+  }
+}
+
+@keyframes sold-card-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.88) translateY(24px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.02) translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes stage-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-20deg);
+  }
+}
+
+.animate-sold-stamp {
+  animation: sold-stamp-slam 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-sold-card {
+  animation: sold-card-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-stage-enter {
+  animation: stage-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 2.2s infinite ease-in-out;
+}

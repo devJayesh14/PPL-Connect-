@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
@@ -6,6 +6,7 @@ import { AuctionRoomState, Team } from '../../types';
 import { LivePlayerCard } from '../../components/auction/LivePlayerCard';
 import { LiveTimer } from '../../components/auction/LiveTimer';
 import { LiveBidFeed } from '../../components/auction/LiveBidFeed';
+import { SoldCelebrationOverlay, SoldCelebrationData } from '../../components/auction/SoldCelebrationOverlay';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
@@ -49,7 +50,8 @@ export const LiveAuctionAdmin: React.FC = () => {
   // Modals
   const [selectPlayerModal, setSelectPlayerModal] = useState(false);
   const [markSoldModal, setMarkSoldModal] = useState(false);
-  const [soldModal, setSoldModal] = useState<any>(null);
+  const [soldModal, setSoldModal] = useState<SoldCelebrationData | null>(null);
+  const lastCelebratedKeyRef = useRef<string>('');
 
   // Sold player custom team selection state
   const [selectedSoldTeamId, setSelectedSoldTeamId] = useState('');
@@ -81,8 +83,39 @@ export const LiveAuctionAdmin: React.FC = () => {
       .catch(console.error);
   }, [routeAuctionId]);
 
-  // 2. Fetch Auction Data & Room State via HTTP for instant loading
-  const fetchRoomData = async () => {
+  // Trigger celebration once per sold player transition (works for both Socket & HTTP fallback)
+  const triggerSoldCelebration = useCallback((data: SoldCelebrationData) => {
+    const key = `${data.player?.playerId || data.player?.fullName}_${data.finalAmount}_${data.winningTeam?.teamId || ''}`;
+    if (lastCelebratedKeyRef.current === key) return;
+    lastCelebratedKeyRef.current = key;
+    setSoldModal(data);
+  }, []);
+
+  // Fetch auxiliary data (teams, pool, auction metadata) without overwriting live roomState
+  const fetchAuxiliaryData = useCallback(async () => {
+    if (!auctionId) return;
+    try {
+      const [teamsRes, poolRes, aucRes] = await Promise.all([
+        fetch(`/api/teams?auctionId=${auctionId}`),
+        fetch(`/api/players/pool/${auctionId}`),
+        fetch(`/api/auctions/${auctionId}`),
+      ]);
+      if (teamsRes.ok) {
+        const tList = await teamsRes.json();
+        setTeams(tList);
+        if (tList && tList.length > 0) {
+          setAdminBiddingTeamId((prev) => prev || tList[0].id);
+        }
+      }
+      if (poolRes.ok) setPoolPlayers(await poolRes.json());
+      if (aucRes.ok) setAuctionInfo(await aucRes.json());
+    } catch (e) {
+      console.error(e);
+    }
+  }, [auctionId]);
+
+  // 2. Fetch Auction Data & Room State via HTTP for instant loading & serverless sync
+  const fetchRoomData = useCallback(async () => {
     if (!auctionId) return;
     try {
       const [stateRes, teamsRes, poolRes, aucRes] = await Promise.all([
@@ -93,8 +126,17 @@ export const LiveAuctionAdmin: React.FC = () => {
       ]);
 
       if (stateRes.ok) {
-        const state = await stateRes.json();
+        const state: AuctionRoomState = await stateRes.json();
         setRoomState(state);
+        if (state.status === 'BIDDING' && state.currentPlayer) {
+          setSoldModal(null);
+        } else if (state.status === 'SOLD' && state.currentPlayer && state.highestBidder) {
+          triggerSoldCelebration({
+            player: state.currentPlayer,
+            winningTeam: state.highestBidder,
+            finalAmount: state.currentBid,
+          });
+        }
       }
       if (teamsRes.ok) {
         const tList = await teamsRes.json();
@@ -108,54 +150,106 @@ export const LiveAuctionAdmin: React.FC = () => {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [auctionId, triggerSoldCelebration]);
 
   useEffect(() => {
     fetchRoomData();
-  }, [auctionId]);
+  }, [fetchRoomData]);
 
-  // 3. Setup Socket.IO real-time subscriptions
+  // 3. Setup Socket.IO real-time subscriptions + automatic HTTP polling fallback
   useEffect(() => {
-    if (!socket || !auctionId) return;
+    if (!auctionId) return;
 
-    socket.emit('JOIN_AUCTION', { auctionId, user: { role: 'ADMIN' } });
+    if (socket) {
+      socket.emit('JOIN_AUCTION', { auctionId, user: { role: isAdmin ? 'ADMIN' : 'SPECTATOR' } });
+    }
 
     const handleAuctionState = (state: AuctionRoomState) => {
       setRoomState(state);
-      fetchRoomData();
+      if (state.status === 'BIDDING' && state.currentPlayer) {
+        setSoldModal(null);
+      }
+      fetchAuxiliaryData();
     };
 
     const handleTimerTick = ({ seconds }: { seconds: number }) => {
       setRoomState((prev) => (prev ? { ...prev, timerSeconds: seconds, isTimerRunning: true } : prev));
     };
 
-    const handleSoldCelebration = (data: any) => {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#2563EB', '#3B82F6', '#EFF6FF', '#0F172A'],
-      });
-      setSoldModal(data);
-      fetchRoomData();
+    const handleSoldCelebration = (data: SoldCelebrationData) => {
+      triggerSoldCelebration(data);
+      fetchAuxiliaryData();
     };
 
     const handleUnsoldEvent = () => {
-      fetchRoomData();
+      fetchAuxiliaryData();
     };
 
-    socket.on('AUCTION_STATE', handleAuctionState);
-    socket.on('TIMER_TICK', handleTimerTick);
-    socket.on('PLAYER_SOLD_CELEBRATION', handleSoldCelebration);
-    socket.on('PLAYER_UNSOLD_EVENT', handleUnsoldEvent);
+    if (socket) {
+      socket.on('AUCTION_STATE', handleAuctionState);
+      socket.on('TIMER_TICK', handleTimerTick);
+      socket.on('PLAYER_SOLD_CELEBRATION', handleSoldCelebration);
+      socket.on('PLAYER_UNSOLD_EVENT', handleUnsoldEvent);
+    }
+
+    // Resilient HTTP polling fallback (keeps serverless & spectators always synced)
+    const pollIntervalMs = isConnected ? 8000 : 2500;
+    const pollTimer = window.setInterval(() => {
+      fetchRoomData();
+    }, pollIntervalMs);
 
     return () => {
-      socket.off('AUCTION_STATE', handleAuctionState);
-      socket.off('TIMER_TICK', handleTimerTick);
-      socket.off('PLAYER_SOLD_CELEBRATION', handleSoldCelebration);
-      socket.off('PLAYER_UNSOLD_EVENT', handleUnsoldEvent);
+      window.clearInterval(pollTimer);
+      if (socket) {
+        socket.off('AUCTION_STATE', handleAuctionState);
+        socket.off('TIMER_TICK', handleTimerTick);
+        socket.off('PLAYER_SOLD_CELEBRATION', handleSoldCelebration);
+        socket.off('PLAYER_UNSOLD_EVENT', handleUnsoldEvent);
+      }
     };
-  }, [socket, auctionId]);
+  }, [socket, isConnected, auctionId, isAdmin, fetchRoomData, fetchAuxiliaryData, triggerSoldCelebration]);
+
+  // Resilient Socket-with-HTTP-Fallback helper (times out after 2.5s if socket ack is lost)
+  const runActionWithFallback = async (
+    socketEvent: string,
+    socketPayload: Record<string, any>,
+    httpPath: string,
+    httpBody?: Record<string, any>
+  ): Promise<any> => {
+    if (socket && isConnected) {
+      const socketResult = await new Promise<any>((resolve) => {
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            resolve(null);
+          }
+        }, 2500);
+
+        socket.emit(socketEvent, socketPayload, (res: any) => {
+          if (!settled) {
+            settled = true;
+            window.clearTimeout(timeout);
+            resolve(res);
+          }
+        });
+      });
+
+      if (socketResult) {
+        if (socketResult.state) setRoomState(socketResult.state);
+        return socketResult;
+      }
+    }
+
+    const res = await fetch(httpPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: httpBody ? JSON.stringify(httpBody) : undefined,
+    });
+    const data = await res.json();
+    if (data?.state) setRoomState(data.state);
+    return data;
+  };
 
   // Sync all players if pool is empty
   const handleSyncAllPlayers = async () => {
@@ -170,40 +264,27 @@ export const LiveAuctionAdmin: React.FC = () => {
     }
   };
 
-  // 4. Admin Handlers with HTTP Fallback (Guaranteed to work!)
+  // 4. Admin Handlers with Resilient Socket + HTTP Fallback
   const handleCallNextPlayer = async (specificPlayerId?: string) => {
     setActionLoading(true);
     setActionError(null);
+    setSoldModal(null);
 
-    // Call via socket if connected
-    if (socket && isConnected) {
-      socket.emit('CALL_PLAYER', { auctionId, playerId: specificPlayerId }, (res: any) => {
-        setActionLoading(false);
-        setSelectPlayerModal(false);
-        if (!res.success) {
-          setActionError(res.message);
-        } else {
-          fetchRoomData();
-        }
-      });
-      return;
-    }
-
-    // Fallback to HTTP
     try {
-      const res = await fetch(`/api/auctions/${auctionId}/call-player`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: specificPlayerId }),
-      });
-      const data = await res.json();
+      const data = await runActionWithFallback(
+        'CALL_PLAYER',
+        { auctionId, playerId: specificPlayerId },
+        `/api/auctions/${auctionId}/call-player`,
+        { playerId: specificPlayerId }
+      );
       setSelectPlayerModal(false);
-      if (!data.success) {
-        setActionError(data.message || 'Error calling player');
+      if (!data?.success) {
+        setActionError(data?.message || 'Error calling player');
       } else {
-        fetchRoomData();
+        await fetchAuxiliaryData();
       }
     } catch (err: any) {
+      setSelectPlayerModal(false);
       setActionError(err.message || 'Error calling player');
     } finally {
       setActionLoading(false);
@@ -214,8 +295,8 @@ export const LiveAuctionAdmin: React.FC = () => {
   const openMarkSoldModal = () => {
     if (!roomState?.currentPlayer) return;
 
-    // Reset selected team so admin explicitly chooses winning team
-    setSelectedSoldTeamId('');
+    // Pre-fill highest bidder team if one bid, otherwise let admin choose
+    setSelectedSoldTeamId(roomState.highestBidder?.teamId || '');
     setSoldPriceInput(String(roomState.currentBid || roomState.currentPlayer.basePrice || 500));
     setActionError(null);
     setMarkSoldModal(true);
@@ -233,44 +314,31 @@ export const LiveAuctionAdmin: React.FC = () => {
     setActionLoading(true);
     setActionError(null);
 
-    // Try Socket first
-    if (socket && isConnected) {
-      socket.emit(
-        'MARK_SOLD',
-        {
-          auctionId,
-          teamId: selectedSoldTeamId,
-          amount: finalAmount,
-        },
-        (res: any) => {
-          setActionLoading(false);
-          if (!res.success) {
-            setActionError(res.message);
-          } else {
-            setMarkSoldModal(false);
-            fetchRoomData();
-          }
-        }
-      );
-      return;
-    }
-
-    // HTTP Fallback
     try {
-      const res = await fetch(`/api/auctions/${auctionId}/mark-sold`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          teamId: selectedSoldTeamId,
-          amount: finalAmount,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setActionError(data.message || 'Error marking player as sold');
+      const data = await runActionWithFallback(
+        'MARK_SOLD',
+        { auctionId, teamId: selectedSoldTeamId, amount: finalAmount },
+        `/api/auctions/${auctionId}/mark-sold`,
+        { teamId: selectedSoldTeamId, amount: finalAmount }
+      );
+
+      if (!data?.success) {
+        setActionError(data?.message || 'Error marking player as sold');
       } else {
         setMarkSoldModal(false);
-        fetchRoomData();
+        if (data.soldData) {
+          triggerSoldCelebration(data.soldData);
+        } else if (roomState?.currentPlayer) {
+          const teamObj = teams.find((t) => t.id === selectedSoldTeamId);
+          triggerSoldCelebration({
+            player: roomState.currentPlayer,
+            winningTeam: teamObj
+              ? { teamId: teamObj.id, teamName: teamObj.name, teamLogo: teamObj.logo, teamColor: teamObj.color }
+              : roomState.highestBidder,
+            finalAmount,
+          });
+        }
+        await fetchAuxiliaryData();
       }
     } catch (err: any) {
       setActionError(err.message || 'Error marking player as sold');
@@ -284,20 +352,14 @@ export const LiveAuctionAdmin: React.FC = () => {
     if (!confirm('Mark current player as UNSOLD?')) return;
     setActionLoading(true);
 
-    if (socket && isConnected) {
-      socket.emit('MARK_UNSOLD', { auctionId }, (res: any) => {
-        setActionLoading(false);
-        if (!res.success) alert(res.message);
-        else fetchRoomData();
-      });
-      return;
-    }
-
     try {
-      const res = await fetch(`/api/auctions/${auctionId}/mark-unsold`, { method: 'POST' });
-      const data = await res.json();
-      if (!data.success) alert(data.message);
-      else fetchRoomData();
+      const data = await runActionWithFallback(
+        'MARK_UNSOLD',
+        { auctionId },
+        `/api/auctions/${auctionId}/mark-unsold`
+      );
+      if (!data?.success) alert(data?.message || 'Error marking player unsold');
+      else await fetchAuxiliaryData();
     } catch (e) {
       console.error(e);
     } finally {
@@ -308,17 +370,9 @@ export const LiveAuctionAdmin: React.FC = () => {
   // Skip Player
   const handleSkipPlayer = async () => {
     setActionLoading(true);
-    if (socket && isConnected) {
-      socket.emit('SKIP_PLAYER', { auctionId }, () => {
-        setActionLoading(false);
-        fetchRoomData();
-      });
-      return;
-    }
-
     try {
-      await fetch(`/api/auctions/${auctionId}/skip-player`, { method: 'POST' });
-      fetchRoomData();
+      await runActionWithFallback('SKIP_PLAYER', { auctionId }, `/api/auctions/${auctionId}/skip-player`);
+      await fetchAuxiliaryData();
     } catch (e) {
       console.error(e);
     } finally {
@@ -328,13 +382,9 @@ export const LiveAuctionAdmin: React.FC = () => {
 
   // Undo Last Bid
   const handleUndoBid = async () => {
-    if (socket && isConnected) {
-      socket.emit('UNDO_LAST_BID', { auctionId }, () => fetchRoomData());
-      return;
-    }
     try {
-      await fetch(`/api/auctions/${auctionId}/undo-bid`, { method: 'POST' });
-      fetchRoomData();
+      await runActionWithFallback('UNDO_LAST_BID', { auctionId }, `/api/auctions/${auctionId}/undo-bid`);
+      await fetchAuxiliaryData();
     } catch (e) {
       console.error(e);
     }
@@ -343,14 +393,12 @@ export const LiveAuctionAdmin: React.FC = () => {
   // Toggle Clock Pause / Resume
   const handleTogglePause = async () => {
     const isRunning = roomState?.isTimerRunning;
-    if (socket && isConnected) {
-      socket.emit(isRunning ? 'PAUSE_AUCTION' : 'RESUME_AUCTION', { auctionId }, () => fetchRoomData());
-      return;
-    }
-
     try {
-      await fetch(`/api/auctions/${auctionId}/${isRunning ? 'pause-clock' : 'resume-clock'}`, { method: 'POST' });
-      fetchRoomData();
+      await runActionWithFallback(
+        isRunning ? 'PAUSE_AUCTION' : 'RESUME_AUCTION',
+        { auctionId },
+        `/api/auctions/${auctionId}/${isRunning ? 'pause-clock' : 'resume-clock'}`
+      );
     } catch (e) {
       console.error(e);
     }
@@ -358,42 +406,28 @@ export const LiveAuctionAdmin: React.FC = () => {
 
   // Finish / Conclude Entire Live Auction
   const handleFinishAuction = async () => {
-    if (!confirm('Are you sure you want to FINISH and COMPLETE this live auction?\\n\\nThis will officially conclude the auction, stop bidding, and finalize all squads and reports.')) {
+    if (!confirm('Are you sure you want to FINISH and COMPLETE this live auction?\n\nThis will officially conclude the auction, stop bidding, and finalize all squads and reports.')) {
       return;
     }
 
     setActionLoading(true);
     setActionError(null);
 
-    const onCompleteSuccess = () => {
-      confetti({
-        particleCount: 150,
-        spread: 100,
-        origin: { y: 0.5 },
-      });
-      fetchRoomData();
-      alert('🎉 Auction officially FINISHED! Squads and sold reports have been finalized.');
-    };
-
-    if (socket && isConnected) {
-      socket.emit('END_AUCTION', { auctionId }, (res: any) => {
-        setActionLoading(false);
-        if (res && !res.success) {
-          setActionError(res.message || 'Error ending auction');
-        } else {
-          onCompleteSuccess();
-        }
-      });
-      return;
-    }
-
     try {
-      const res = await fetch(`/api/auctions/${auctionId}/end-auction`, { method: 'POST' });
-      const data = await res.json();
-      if (!data.success) {
+      const data = await runActionWithFallback(
+        'END_AUCTION',
+        { auctionId },
+        `/api/auctions/${auctionId}/end-auction`
+      );
+      if (data && !data.success) {
         setActionError(data.message || 'Error ending auction');
       } else {
-        onCompleteSuccess();
+        confetti({
+          particleCount: 150,
+          spread: 100,
+          origin: { y: 0.5 },
+        });
+        await fetchRoomData();
       }
     } catch (err: any) {
       setActionError(err.message || 'Error ending auction');
@@ -404,23 +438,14 @@ export const LiveAuctionAdmin: React.FC = () => {
 
   // Admin placing / incrementing bid on stage without requiring team selection
   const submitAdminBid = async (teamId: string = '', amount: number) => {
-    if (socket && isConnected) {
-      socket.emit('PLACE_BID', { auctionId, teamId: teamId || undefined, customAmount: amount }, (res: any) => {
-        if (!res.success) alert(res.message);
-        else fetchRoomData();
-      });
-      return;
-    }
-
     try {
-      const res = await fetch(`/api/auctions/${auctionId}/place-bid`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId: teamId || undefined, customAmount: amount }),
-      });
-      const data = await res.json();
-      if (!data.success) alert(data.message);
-      else fetchRoomData();
+      const data = await runActionWithFallback(
+        'PLACE_BID',
+        { auctionId, teamId: teamId || undefined, customAmount: amount },
+        `/api/auctions/${auctionId}/place-bid`,
+        { teamId: teamId || undefined, customAmount: amount }
+      );
+      if (data && !data.success) alert(data.message);
     } catch (e) {
       console.error(e);
     }
@@ -918,53 +943,18 @@ export const LiveAuctionAdmin: React.FC = () => {
       )}
 
       {/* ========================================================== */}
-      {/* 3. SOLD CELEBRATION MODAL                                  */}
+      {/* 3. SOLD CELEBRATION ANIMATION OVERLAY                      */}
       {/* ========================================================== */}
-      {soldModal && (
-        <Modal
-          isOpen={!!soldModal}
-          onClose={() => setSoldModal(null)}
-          title="PLAYER SOLD!"
-          maxWidth="md"
-        >
-          <div className="text-center py-4 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto ring-8 ring-emerald-50">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Official Result
-              </span>
-              <h2 className="text-2xl font-extrabold text-slate-900 mt-1">
-                {soldModal.player?.fullName || soldModal.player?.full_name}
-              </h2>
-              <p className="text-xs text-slate-500">{soldModal.player?.playingRole}</p>
-            </div>
-
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-              <span className="text-xs text-slate-500">Acquired by</span>
-              <h3 className="text-lg font-bold text-blue-700">
-                {soldModal.winningTeam?.teamName || soldModal.winningTeam?.name || 'Franchise Team'}
-              </h3>
-              <div className="text-2xl font-black text-slate-900 pt-1">
-                {formatCurrency(soldModal.finalAmount)}
-              </div>
-            </div>
-
-            <Button
-              size="md"
-              className="w-full bg-blue-600 hover:bg-blue-700"
-              onClick={() => {
-                setSoldModal(null);
-                handleCallNextPlayer();
-              }}
-            >
-              Continue to Next Player
-            </Button>
-          </div>
-        </Modal>
-      )}
+      <SoldCelebrationOverlay
+        data={soldModal}
+        isAdmin={isAdmin}
+        loading={actionLoading}
+        onClose={() => setSoldModal(null)}
+        onNextPlayer={() => {
+          setSoldModal(null);
+          handleCallNextPlayer();
+        }}
+      />
     </div>
   );
 };

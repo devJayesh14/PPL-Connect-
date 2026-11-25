@@ -1,27 +1,50 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { AuctionRoomState, Team } from '../../types';
 import { LivePlayerCard } from '../../components/auction/LivePlayerCard';
 import { LiveTimer } from '../../components/auction/LiveTimer';
 import { LiveBidFeed } from '../../components/auction/LiveBidFeed';
+import { SoldCelebrationOverlay, SoldCelebrationData } from '../../components/auction/SoldCelebrationOverlay';
 import { Badge } from '../../components/common/Badge';
-import { formatCurrency, formatCompactCurrency } from '../../utils/formatters';
-import confetti from 'canvas-confetti';
-import { Shield, Wallet, Users, Award, Radio, Eye } from 'lucide-react';
+import { formatCurrency } from '../../utils/formatters';
+import { Radio } from 'lucide-react';
 
 export const CaptainLiveAuction: React.FC = () => {
   const { currentTeamId, availableTeams } = useAuth();
-  const { socket } = useSocket();
-  const auctionId = 'auc_default';
+  const { socket, isConnected } = useSocket();
+  const [auctionId, setAuctionId] = useState<string>('auc_default');
 
   const [roomState, setRoomState] = useState<AuctionRoomState | null>(null);
   const [teamData, setTeamData] = useState<Team | null>(null);
   const [auctionConfig, setAuctionConfig] = useState<any>(null);
+  const [soldCelebration, setSoldCelebration] = useState<SoldCelebrationData | null>(null);
+  const lastCelebratedKeyRef = useRef<string>('');
 
   const currentTeam = availableTeams.find((t) => t.id === currentTeamId);
 
-  const fetchTeamDetails = async () => {
+  const triggerSoldCelebration = useCallback((data: SoldCelebrationData) => {
+    const key = `${data.player?.playerId || data.player?.fullName}_${data.finalAmount}_${data.winningTeam?.teamId || ''}`;
+    if (lastCelebratedKeyRef.current === key) return;
+    lastCelebratedKeyRef.current = key;
+    setSoldCelebration(data);
+  }, []);
+
+  // Discover active LIVE auction
+  useEffect(() => {
+    fetch('/api/auctions')
+      .then((res) => res.json())
+      .then((auctions: any[]) => {
+        if (auctions && auctions.length > 0) {
+          const live = auctions.find((a) => a.status === 'LIVE');
+          if (live?.id) setAuctionId(live.id);
+          else setAuctionId(auctions[0].id);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const fetchTeamDetails = useCallback(async () => {
     if (!currentTeamId) return;
     try {
       const res = await fetch(`/api/teams/${currentTeamId}`);
@@ -32,51 +55,86 @@ export const CaptainLiveAuction: React.FC = () => {
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [currentTeamId]);
+
+  const fetchRoomState = useCallback(async () => {
+    if (!auctionId) return;
+    try {
+      const res = await fetch(`/api/auctions/${auctionId}/room-state`);
+      if (res.ok) {
+        const state: AuctionRoomState = await res.json();
+        setRoomState(state);
+        if (state.status === 'BIDDING' && state.currentPlayer) {
+          setSoldCelebration(null);
+        } else if (state.status === 'SOLD' && state.currentPlayer && state.highestBidder) {
+          triggerSoldCelebration({
+            player: state.currentPlayer,
+            winningTeam: state.highestBidder,
+            finalAmount: state.currentBid,
+          });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [auctionId, triggerSoldCelebration]);
 
   useEffect(() => {
     fetchTeamDetails();
+    fetchRoomState();
     fetch(`/api/auctions/${auctionId}`)
       .then((r) => r.json())
       .then((d) => setAuctionConfig(d.config))
       .catch(console.error);
-  }, [currentTeamId, auctionId]);
+  }, [fetchTeamDetails, fetchRoomState, auctionId]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (socket) {
+      socket.emit('JOIN_AUCTION', {
+        auctionId,
+        user: { role: 'CAPTAIN', teamId: currentTeamId },
+      });
+    }
 
-    socket.emit('JOIN_AUCTION', {
-      auctionId,
-      user: { role: 'CAPTAIN', teamId: currentTeamId },
-    });
-
-    socket.on('AUCTION_STATE', (state: AuctionRoomState) => {
+    const handleAuctionState = (state: AuctionRoomState) => {
       setRoomState(state);
-      fetchTeamDetails();
-    });
-
-    socket.on('TIMER_TICK', ({ seconds }: { seconds: number }) => {
-      setRoomState((prev) => (prev ? { ...prev, timerSeconds: seconds, isTimerRunning: true } : prev));
-    });
-
-    socket.on('PLAYER_SOLD_CELEBRATION', (data: any) => {
-      if (data.winningTeam?.teamId === currentTeamId) {
-        confetti({
-          particleCount: 100,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ['#2563EB', '#1D4ED8', '#FFFFFF'],
-        });
+      if (state.status === 'BIDDING' && state.currentPlayer) {
+        setSoldCelebration(null);
       }
       fetchTeamDetails();
-    });
+    };
+
+    const handleTimerTick = ({ seconds }: { seconds: number }) => {
+      setRoomState((prev) => (prev ? { ...prev, timerSeconds: seconds, isTimerRunning: true } : prev));
+    };
+
+    const handleSoldCelebration = (data: SoldCelebrationData) => {
+      triggerSoldCelebration(data);
+      fetchTeamDetails();
+    };
+
+    if (socket) {
+      socket.on('AUCTION_STATE', handleAuctionState);
+      socket.on('TIMER_TICK', handleTimerTick);
+      socket.on('PLAYER_SOLD_CELEBRATION', handleSoldCelebration);
+    }
+
+    // Automatic HTTP polling fallback so player details always show even on serverless
+    const pollMs = isConnected ? 6000 : 2500;
+    const pollTimer = window.setInterval(() => {
+      fetchRoomState();
+      fetchTeamDetails();
+    }, pollMs);
 
     return () => {
-      socket.off('AUCTION_STATE');
-      socket.off('TIMER_TICK');
-      socket.off('PLAYER_SOLD_CELEBRATION');
+      window.clearInterval(pollTimer);
+      if (socket) {
+        socket.off('AUCTION_STATE', handleAuctionState);
+        socket.off('TIMER_TICK', handleTimerTick);
+        socket.off('PLAYER_SOLD_CELEBRATION', handleSoldCelebration);
+      }
     };
-  }, [socket, auctionId, currentTeamId]);
+  }, [socket, isConnected, auctionId, currentTeamId, fetchRoomState, fetchTeamDetails, triggerSoldCelebration]);
 
   // Handle Captain Bid
   const handlePlaceBid = (bidAmount: number): Promise<{ success: boolean; message?: string }> => {
@@ -239,6 +297,13 @@ export const CaptainLiveAuction: React.FC = () => {
           <LiveBidFeed bids={roomState?.bidHistory || []} />
         </div>
       </div>
+
+      {/* Sold Celebration Overlay for Captains */}
+      <SoldCelebrationOverlay
+        data={soldCelebration}
+        isAdmin={false}
+        onClose={() => setSoldCelebration(null)}
+      />
     </div>
   );
 };

@@ -6,6 +6,7 @@ import { Globe, Award, ShieldAlert, Sparkles, User } from 'lucide-react';
 
 interface LivePlayerCardProps {
   player: {
+    playerId?: string;
     fullName: string;
     photo?: string;
     playingRole: string;
@@ -64,7 +65,20 @@ export const LivePlayerCard: React.FC<LivePlayerCardProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-card overflow-hidden">
+    <div
+      key={player.playerId || player.fullName}
+      className="relative bg-white border border-slate-200 rounded-xl shadow-card overflow-hidden animate-stage-enter"
+    >
+      {status === 'SOLD' && (
+        <div className="absolute top-12 right-5 z-20 px-4 py-1.5 rounded-lg bg-emerald-500 text-white font-black text-base tracking-widest uppercase border-2 border-white shadow-xl animate-sold-stamp pointer-events-none">
+          SOLD!
+        </div>
+      )}
+      {status === 'UNSOLD' && (
+        <div className="absolute top-12 right-5 z-20 px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-black text-base tracking-widest uppercase border-2 border-white shadow-xl animate-sold-stamp pointer-events-none">
+          UNSOLD
+        </div>
+      )}
       {/* Top Banner / Order Strip */}
       <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
