@@ -73,7 +73,7 @@ async function run() {
     sha = await git.commit({
       fs,
       dir: projectRoot,
-      message: 'feat: recover & merge all 50 registered players, sync central Neon DB, enable self-service photo upload with warnings',
+      message: 'chore: remove all dummy teams, captains, and test auction data; keep only real data',
       author: {
         name: 'devJayesh14',
         email: 'devjayesh14@gmail.com',

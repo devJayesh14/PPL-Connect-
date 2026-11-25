@@ -32,23 +32,26 @@ export const CreateAuctionWizard: React.FC = () => {
   const [formData, setFormData] = useState({
     // Step 1: Basic Information
     tournamentId: '',
-    name: 'Surat Premier League 2026 Auction',
-    description: 'Annual mega player auction for Surat Premier League championship.',
-    auctionDate: '2026-12-10',
+    name: '',
+    description: '',
+    auctionDate: new Date().toISOString().split('T')[0],
     startTime: '10:00 AM',
     endTime: '06:00 PM',
     timezone: 'IST (+05:30)',
-    logo: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=200&h=200&fit=crop',
-    banner: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1200&h=400&fit=crop',
+    logo: '',
+    banner: '',
     status: 'DRAFT',
 
-    // Step 2: Teams & Captains
-    teams: [
-      { name: 'Surat Super Kings', shortName: 'SSK', color: '#2563EB', purse: 20000, captainName: 'Kunal Patel', captainEmail: 'kunal@ssk.com', captainMobile: '+91 98980 11111' },
-      { name: 'Tapi Titans', shortName: 'TT', color: '#1D4ED8', purse: 20000, captainName: 'Mehul Shah', captainEmail: 'mehul@tt.com', captainMobile: '+91 98980 22222' },
-      { name: 'Diamond City Warriors', shortName: 'DCW', color: '#0F172A', purse: 20000, captainName: 'Chirag Desai', captainEmail: 'chirag@dcw.com', captainMobile: '+91 98980 33333' },
-      { name: 'Varachha Strikers', shortName: 'VS', color: '#3B82F6', purse: 20000, captainName: 'Hardik Vaghani', captainEmail: 'hardik@vs.com', captainMobile: '+91 98980 44444' },
-    ],
+    // Step 2: Teams & Captains (Start empty — only add real teams)
+    teams: [] as Array<{
+      name: string;
+      shortName: string;
+      color: string;
+      purse: number;
+      captainName: string;
+      captainEmail: string;
+      captainMobile: string;
+    }>,
 
     // Step 3: Purse & Pricing
     totalPursePerTeam: 20000,
@@ -441,24 +444,27 @@ export const CreateAuctionWizard: React.FC = () => {
               </div>
 
               <div className="space-y-3">
+                {formData.teams.length === 0 && (
+                  <div className="p-6 text-center bg-slate-50 border border-dashed border-slate-300 rounded-xl text-xs text-slate-500">
+                    No teams added yet. Click <strong>Add Team</strong> above to add participating franchise teams, or add them later from Teams Management.
+                  </div>
+                )}
                 {formData.teams.map((t, idx) => (
                   <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-800">Team #{idx + 1}</span>
-                      {formData.teams.length > 2 && (
-                        <button
-                          onClick={() => {
-                            setFormData({
-                              ...formData,
-                              teams: formData.teams.filter((_, i) => i !== idx),
-                            });
-                          }}
-                          className="text-rose-500 hover:text-rose-700 text-xs flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Remove</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            teams: formData.teams.filter((_, i) => i !== idx),
+                          });
+                        }}
+                        className="text-rose-500 hover:text-rose-700 text-xs flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

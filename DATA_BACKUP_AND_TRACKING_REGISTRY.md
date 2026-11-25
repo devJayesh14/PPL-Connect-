@@ -1,7 +1,7 @@
 # PPL Connect — Master Data Tracking & Recovery Registry
 
 > **Last Updated & Verified**: 2026-11-25  
-> **Status**: Full Backup Verified (50 Players, 52 Users, 1 Team, 2 Auctions, 1 Tournament, 1 Retention, 3 Squads)
+> **Status**: Clean Real-Data Backup Verified (50 Players, 50 Users, 0 Dummy Teams, 0 Dummy Captains, 1 Official Auction, 1 Official Tournament)
 
 ---
 
@@ -48,25 +48,13 @@ All backup data is safely stored in [`data/backups/`](file:///Users/bhatupatil/P
    - **ID**: `auc_default`
    - **Status**: `REGISTRATION_OPEN`
    - **Starting Purse per Team**: ₹20,000
-   - **Players in Pool**: 50+
-
-2. **Official Auction 2**
-   - **ID**: `auc_1795538374138`
-   - **Status**: `LIVE`
-   - **Share Link**: `http://localhost:5173/live/auc_1795538374138`
+   - **Players in Pool**: 48 approved in pool (50 total registered)
 
 ---
 
 ## 4. Official Teams & Squads
 
-### 1. Surat Super Kings (SSK)
-- **Team ID**: `team_1795538466184_6h46f`
-- **Short Code**: SSK
-- **Initial Purse**: ₹20,000
-- **Spent Purse**: ₹0
-- **Remaining Purse**: ₹20,000
-- **Captain**: Dharmesh Surati (Mobile: 7016206224)
-- **Retained Player**: Dharmesh Surati (BATSMAN, Cost: ₹0, Type: CAPTAIN_RETENTION)
+_No dummy teams or dummy captains present. Teams will appear here as real teams are added by the admin._
 
 ---
 
@@ -136,5 +124,4 @@ Total Registered Players: 50
 | Role | Username / Mobile / Email | Default Password | Access URL |
 | :--- | :--- | :--- | :--- |
 | **Super Admin** | `admin@pplconnect.com` | `admin123` | [`/login`](file:///Users/bhatupatil/PPL%20Connect/src/pages/auth/LoginPage.tsx) |
-| **Team Captain (SSK)** | `7016206224` (Dharmesh Surati) | `admin123` / `player123` | [`/login`](file:///Users/bhatupatil/PPL%20Connect/src/pages/auth/LoginPage.tsx) |
 | **Player Self Check** | Any Player Mobile Number | N/A (Direct Search) | [`/check`](file:///Users/bhatupatil/PPL%20Connect/src/pages/public/PlayerSelfCheckPage.tsx) |
